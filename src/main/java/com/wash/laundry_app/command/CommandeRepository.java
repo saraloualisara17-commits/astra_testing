@@ -26,8 +26,15 @@ public interface CommandeRepository extends JpaRepository<Commande, Long> {
            "LEFT JOIN FETCH ct.product " +
            "LEFT JOIN FETCH c.paiements " +
            "LEFT JOIN FETCH c.livreur " +
+           "LEFT JOIN FETCH c.deliveryDriver " +
            "WHERE c.id = :id")
     Optional<Commande> findForReceiptById(@Param("id") Long id);
+
+    @Query("SELECT DISTINCT c FROM Commande c " +
+           "LEFT JOIN FETCH c.attempts att " +
+           "LEFT JOIN FETCH att.driver " +
+           "WHERE c.id = :id")
+    Optional<Commande> findWithAttemptsById(@Param("id") Long id);
 
     @Query("SELECT COUNT(c) FROM Commande c WHERE c.status = :status")
     long countByStatus(@Param("status") CommandeStatus status);

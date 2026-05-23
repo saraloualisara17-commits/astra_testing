@@ -27,12 +27,20 @@ public class ReceiptController {
     private final PdfService pdfService;
     private final PaiementRepository paiementRepository;
 
+    private Commande loadForReceipt(Long id) {
+        Commande commande = commandeRepository.findForReceiptById(id).orElseThrow(CommandeNotFoundException::new);
+        // Attempts live in a separate bag — must be fetched in a second query to avoid
+        // Hibernate "cannot simultaneously fetch multiple bags" with commandeTapis + paiements.
+        commandeRepository.findWithAttemptsById(id)
+                .ifPresent(c -> commande.setAttempts(c.getAttempts()));
+        return commande;
+    }
+
     @Transactional(readOnly = true)
     @GetMapping("/order/pdf")
     public ResponseEntity<byte[]> getOrderReceiptPdf(@PathVariable Long id) {
-        Commande commande = commandeRepository.findForReceiptById(id).orElseThrow(CommandeNotFoundException::new);
+        Commande commande = loadForReceipt(id);
         byte[] pdf = pdfService.generatePdf(commande, "ORDER");
-        
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_PDF_VALUE)
                 .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=commande-" + commande.getNumeroCommande() + ".pdf")
@@ -42,13 +50,11 @@ public class ReceiptController {
     @Transactional(readOnly = true)
     @GetMapping("/delivery/pdf")
     public ResponseEntity<byte[]> getDeliveryNotePdf(@PathVariable Long id) {
-        Commande commande = commandeRepository.findForReceiptById(id).orElseThrow(CommandeNotFoundException::new);
+        Commande commande = loadForReceipt(id);
         if (commande.getStatus() != CommandeStatus.DELIVERED) {
             return ResponseEntity.badRequest().build();
         }
-        
         byte[] pdf = pdfService.generatePdf(commande, "DELIVERY");
-        
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_PDF_VALUE)
                 .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=livraison-" + commande.getNumeroCommande() + ".pdf")
@@ -58,8 +64,7 @@ public class ReceiptController {
     @Transactional(readOnly = true)
     @GetMapping("/order/whatsapp")
     public ResponseEntity<?> getOrderWhatsAppMeta(@PathVariable Long id) {
-        Commande commande = commandeRepository.findForReceiptById(id).orElseThrow(CommandeNotFoundException::new);
-        
+        Commande commande = loadForReceipt(id);
         return ResponseEntity.ok(Map.of(
             "success", true,
             "data", Map.of(
@@ -73,8 +78,7 @@ public class ReceiptController {
     @Transactional(readOnly = true)
     @GetMapping("/delivery/whatsapp")
     public ResponseEntity<?> getDeliveryWhatsAppMeta(@PathVariable Long id) {
-        Commande commande = commandeRepository.findForReceiptById(id).orElseThrow(CommandeNotFoundException::new);
-
+        Commande commande = loadForReceipt(id);
         return ResponseEntity.ok(Map.of(
             "success", true,
             "data", Map.of(
@@ -88,7 +92,7 @@ public class ReceiptController {
     @Transactional(readOnly = true)
     @GetMapping("/order/thermal")
     public ResponseEntity<String> getOrderReceiptThermal(@PathVariable Long id) {
-        Commande commande = commandeRepository.findForReceiptById(id).orElseThrow(CommandeNotFoundException::new);
+        Commande commande = loadForReceipt(id);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_TYPE, "text/plain; charset=UTF-8")
                 .body(pdfService.buildThermalReceiptText(commande, "ORDER"));
@@ -97,7 +101,7 @@ public class ReceiptController {
     @Transactional(readOnly = true)
     @GetMapping("/delivery/thermal")
     public ResponseEntity<String> getDeliveryNoteThermal(@PathVariable Long id) {
-        Commande commande = commandeRepository.findForReceiptById(id).orElseThrow(CommandeNotFoundException::new);
+        Commande commande = loadForReceipt(id);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_TYPE, "text/plain; charset=UTF-8")
                 .body(pdfService.buildThermalReceiptText(commande, "DELIVERY"));
@@ -106,7 +110,7 @@ public class ReceiptController {
     @Transactional(readOnly = true)
     @GetMapping("/payments/{paymentId}/pdf")
     public ResponseEntity<byte[]> getPaymentReceiptPdf(@PathVariable Long id, @PathVariable Long paymentId) {
-        Commande commande = commandeRepository.findForReceiptById(id).orElseThrow(CommandeNotFoundException::new);
+        Commande commande = loadForReceipt(id);
         Paiement paiement = commande.getPaiements().stream()
                 .filter(p -> p.getId().equals(paymentId))
                 .findFirst()
