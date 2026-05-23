@@ -36,18 +36,46 @@ public class ReceiptController {
         return auth != null ? auth.getName() : "anonymous";
     }
 
-    // Each bag (@OneToMany List) must be fetched in its own query.
-    // Hibernate throws "cannot simultaneously fetch multiple bags" if two or more
-    // List collections are join-fetched in the same JPQL query.
+    // Receipt loading — 6 separate queries, one bag per query.
+    // Hibernate throws MultipleBagFetchException if two or more @OneToMany List<>
+    // collections are JOIN FETCHed in the same JPQL query.
+    // Affected bags: Commande.commandeTapis, Commande.paiements, Commande.attempts,
+    //                Client.phones, Client.addresses  — each needs its own query.
+    // All 6 queries run inside the same @Transactional(readOnly=true) session on
+    // the calling controller method, so lazy proxies remain valid throughout.
     private Commande loadForReceipt(Long id) {
+        // Q1: scalars + ManyToOne (Commande→client, livreur, deliveryDriver) — no bags
         Commande commande = commandeRepository.findForReceiptById(id)
                 .orElseThrow(CommandeNotFoundException::new);
+
+        // Q2: Client.phones bag
+        commandeRepository.findWithClientPhonesById(id)
+                .ifPresent(c -> commande.getClient().setPhones(c.getClient().getPhones()));
+
+        // Q3: Client.addresses bag
+        commandeRepository.findWithClientAddressesById(id)
+                .ifPresent(c -> commande.getClient().setAddresses(c.getClient().getAddresses()));
+
+        // Q4: Commande.commandeTapis bag + product
         commandeRepository.findWithItemsById(id)
                 .ifPresent(c -> commande.setCommandeTapis(c.getCommandeTapis()));
+
+        // Q5: Commande.paiements bag
         commandeRepository.findWithPaiementsById(id)
                 .ifPresent(c -> commande.setPaiements(c.getPaiements()));
+
+        // Q6: Commande.attempts bag + attempt.driver
         commandeRepository.findWithAttemptsById(id)
                 .ifPresent(c -> commande.setAttempts(c.getAttempts()));
+
+        log.debug("[receipt] loadForReceipt complete — orderId={} phones={} addresses={} items={} payments={} attempts={}",
+                id,
+                commande.getClient().getPhones().size(),
+                commande.getClient().getAddresses().size(),
+                commande.getCommandeTapis().size(),
+                commande.getPaiements().size(),
+                commande.getAttempts().size());
+
         return commande;
     }
 
