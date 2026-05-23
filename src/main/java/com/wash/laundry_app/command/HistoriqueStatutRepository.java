@@ -16,12 +16,29 @@ public interface HistoriqueStatutRepository extends JpaRepository<HistoriqueStat
 
     List<HistoriqueStatut> findByUserIdOrderByCreatedAtDesc(Long userId);
 
-    @Query("SELECT h FROM HistoriqueStatut h WHERE h.nouveauStatut = 'READY_FOR_DELIVERY' AND h.commande.id IN :commandeIds")
+    // Batch query: fetches the "prete" status history for a list of commande IDs in one query.
+    // JOIN FETCH h.user eagerly loads the user so no secondary query is needed for getName().
+    @Query(
+        "SELECT h FROM HistoriqueStatut h JOIN FETCH h.user WHERE h.commande.id IN :commandeIds AND LOWER(h.nouveauStatut) = 'prete' ORDER BY h.createdAt DESC"
+    )
     List<HistoriqueStatut> findPreteHistoryForCommandes(@Param("commandeIds") List<Long> commandeIds);
 
-    @Query("SELECT DISTINCT h.commande.id FROM HistoriqueStatut h WHERE h.nouveauStatut = :status AND h.createdAt BETWEEN :start AND :end")
-    List<Long> findDistinctCommandeIdsByStatusBetween(@Param("status") String status, @Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+    // Returns distinct commande IDs that transitioned to a given status within the time window.
+    // Using DISTINCT commande.id ensures each order is counted once even if it was picked up
+    // multiple times (e.g. cancelled then re-collected).
+    @Query("SELECT DISTINCT h.commande.id FROM HistoriqueStatut h " +
+           "WHERE h.nouveauStatut = :status " +
+           "AND h.createdAt >= :start AND h.createdAt <= :end")
+    List<Long> findDistinctCommandeIdsByStatusBetween(
+            @Param("status") String status,
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end);
 
-    @Query("SELECT COUNT(DISTINCT h.commande.id) FROM HistoriqueStatut h WHERE h.nouveauStatut = :status AND h.createdAt BETWEEN :start AND :end")
-    long countDistinctCommandesByStatusBetween(@Param("status") String status, @Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+    @Query("SELECT COUNT(DISTINCT h.commande.id) FROM HistoriqueStatut h " +
+           "WHERE h.nouveauStatut = :status " +
+           "AND h.createdAt >= :start AND h.createdAt <= :end")
+    long countDistinctCommandesByStatusBetween(
+            @Param("status") String status,
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end);
 }

@@ -160,9 +160,9 @@
 				<artifactId>flyway-maven-plugin</artifactId>
 				<version>10.15.0</version>
 				<configuration>
-					<url>jdbc:mysql://localhost:3306/laundry-app?createDatabaseIfNotExist=true</url>
-					<user>root</user>
-					<password></password>
+					<url>${flyway.url}</url>
+					<user>${flyway.user}</user>
+					<password>${flyway.password}</password>
 					<cleanDisabled>false</cleanDisabled>
 				</configuration>
 			</plugin>

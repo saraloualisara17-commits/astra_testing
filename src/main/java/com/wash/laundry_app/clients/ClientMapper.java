@@ -14,11 +14,11 @@ public interface ClientMapper {
 
     @Mapping(target = "phones", source = "phones")
     @Mapping(target = "addresses", source = "addresses")
-    ClientDto toDto(Client client);
+    void updateEntity(ClientRegisterRequest request, @MappingTarget Client client);
 
     @Mapping(target = "phones", source = "phones")
     @Mapping(target = "addresses", source = "addresses")
-    void updateEntity(ClientRegisterRequest request, @MappingTarget Client client);
+    ClientDto toDto(Client client);
 
     ClientPhone toPhoneEntity(ClientPhoneDto dto);
     ClientPhoneDto toPhoneDto(ClientPhone entity);

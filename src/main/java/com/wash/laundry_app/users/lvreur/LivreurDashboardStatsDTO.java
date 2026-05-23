@@ -10,8 +10,8 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @Builder
 public class LivreurDashboardStatsDTO {
-    private long readyOrdersCount;
-    private long pendingPickupCount;
-    private long cancelledCount;
-    private long missionsCount;
+    private long readyOrdersCount;      // status: DELIVERED (ready for delivery)
+    private long pendingPickupCount;    // status: PENDING_PICKUP
+    private long cancelledCount;        // status: CANCELLED
+    private long missionsCount;         // total missions for today
 }

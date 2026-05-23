@@ -12,9 +12,9 @@ import java.time.LocalDateTime;
 @Entity
 @Table(name = "notifications")
 @Data
-@Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@Builder
 public class Notification {
 
     @Id
@@ -32,16 +32,15 @@ public class Notification {
     private String message;
 
     @Column(nullable = false)
-    private String type;
+    private String type; 
 
-    @Column(name = "reference_id")
-    private String referenceId;
+    private String referenceId; 
 
-    @Column(name = "is_read", nullable = false)
     @Builder.Default
-    private boolean read = false;
+    @Column(name = "is_read")
+    private boolean read = false; // Renamed to 'read' for standard Lombok setRead/isRead
 
-    @Column(name = "created_at", updatable = false)
+    @Column(name = "created_at")
     private LocalDateTime createdAt;
 
     @PrePersist

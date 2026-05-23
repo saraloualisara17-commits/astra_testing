@@ -38,8 +38,8 @@ public class AnalyticsService {
                 .map(o -> o.getMontantTotal() != null ? o.getMontantTotal() : BigDecimal.ZERO)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        Double todayRevenueRaw = commandeRepository.getTodayRevenue();
-        BigDecimal todayRevenue = todayRevenueRaw != null ? BigDecimal.valueOf(todayRevenueRaw) : BigDecimal.ZERO;
+        BigDecimal todayRevenueRaw = commandeRepository.getTodayRevenue();
+        BigDecimal todayRevenue = todayRevenueRaw != null ? todayRevenueRaw : BigDecimal.ZERO;
 
         // Average Order Value
         BigDecimal avgOrderValue = orders.isEmpty() ? BigDecimal.ZERO : 

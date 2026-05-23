@@ -17,5 +17,4 @@ public class DateRangeRequest {
 
     @NotNull(message = "La date de fin est obligatoire")
     private LocalDate dateFin;
-
 }

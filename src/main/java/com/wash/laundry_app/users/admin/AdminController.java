@@ -1,17 +1,17 @@
 package com.wash.laundry_app.users.admin;
 
 import com.wash.laundry_app.clients.ClientDto;
-import com.wash.laundry_app.clients.ClientRegisterRequest;
-import com.wash.laundry_app.clients.services.ClientService;
-import com.wash.laundry_app.command.*;
-import com.wash.laundry_app.command.services.CommandeQueryService;
-import com.wash.laundry_app.statistiques.*;
+import com.wash.laundry_app.command.CommandeDTO;
+import com.wash.laundry_app.command.UpdateCommandeRequest;
+import com.wash.laundry_app.command.UpdateCommandeStatusRequest;
+import com.wash.laundry_app.statistiques.DailyStatisticsDTO;
+import com.wash.laundry_app.statistiques.DateRangeRequest;
+import com.wash.laundry_app.statistiques.StatisticsDTO;
+import com.wash.laundry_app.statistiques.StatisticsService;
 import com.wash.laundry_app.users.*;
-import com.wash.laundry_app.users.services.UserService;
 import jakarta.validation.Valid;
 import lombok.AllArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -21,62 +21,67 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
+@Deprecated
 @AllArgsConstructor
 @RestController
-@RequestMapping("/api/users")
+@RequestMapping({ "/admin", "/api/admin" })
 public class AdminController {
 
-    private final UserService userService;
-    private final ClientService clientService;
-    private final CommandeService commandeService;
-    private final CommandeQueryService queryService;
+    private final com.wash.laundry_app.users.services.UserService userService;
+    private final com.wash.laundry_app.clients.services.ClientService clientService;
+    private final com.wash.laundry_app.command.CommandeService commandeService;
+    private final com.wash.laundry_app.command.services.CommandeQueryService queryService;
     private final StatisticsService statisticsService;
 
-    @PostMapping
-    public ResponseEntity<UserDto> createUser(@RequestBody @Valid UserRegisterRequest request, UriComponentsBuilder uriBuilder) {
+    @PostMapping("create-user")
+    public ResponseEntity<UserDto> createUser(@RequestBody @Valid UserRegisterRequest request,
+            UriComponentsBuilder uriBuilder) {
         return userService.createUser(request, uriBuilder);
     }
 
-    @PutMapping("/{id}")
+    @PutMapping("update-user/{id}")
     public UserDto updateUser(@PathVariable Long id, @Valid @RequestBody UpdateUserRequest request) {
         return userService.updateUser(id, request);
     }
 
-    @GetMapping("/{id}")
+    @GetMapping("user/{id}")
     public UserDto getUser(@PathVariable Long id) {
         return userService.getSingleUser(id);
     }
 
-    @GetMapping("/active")
+    @GetMapping("active-users")
     public List<UserDto> activeUsers() {
         return userService.getAllActiveUsers();
     }
 
-    @GetMapping("/inactive")
+    @GetMapping("inactive-users")
     public List<UserDto> inActiveUsers() {
         return userService.getAllInActiveUsers();
     }
 
-    @PatchMapping("/{id}/deactivate")
+    @PatchMapping("inactive-user/{id}")
     public void inActiveUser(@PathVariable Long id) {
         userService.deactivateUser(id);
     }
 
-    @PatchMapping("/{id}/activate")
+    @PatchMapping("active-user/{id}")
     public void activeUser(@PathVariable Long id) {
         userService.activateUser(id);
     }
 
-    @DeleteMapping("/{id}")
+    @DeleteMapping("delete-user/{id}")
     public void deleteInActiveUser(@PathVariable Long id) {
         userService.deleteUser(id);
     }
 
-    @GetMapping("/map")
+    @GetMapping("/commandes/map")
     public ResponseEntity<?> getOrdersForMap(@RequestParam(required = false) Long livreurId) {
-        return ResponseEntity.ok(queryService.getOrdersForMap(livreurId));
+        return ResponseEntity.ok(Map.of(
+                "success", true,
+                "data", queryService.getOrdersForMap(livreurId)));
     }
 
+    // get all commandes
     @GetMapping("/commandes")
     public ResponseEntity<AdminOrdersResponseDTO> allCommandes(
             @RequestParam(required = false) String status,
@@ -89,42 +94,46 @@ public class AdminController {
             @RequestParam(required = false) String search,
             @RequestParam(required = false) Long livreurId,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "50") int size,
+            @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort) {
-        return ResponseEntity.ok(queryService.getFilteredCommands(
-                status, mode, paidDebts, activeOnly, selfSubmitted, dateDebut, dateFin, search, livreurId, page, size, sort));
+        AdminOrdersResponseDTO response = queryService.getFilteredCommands(status, mode, paidDebts, activeOnly, selfSubmitted, dateDebut, dateFin, search,
+                livreurId, page, size, sort);
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/commandes/export-csv")
     public ResponseEntity<byte[]> exportCommandesCsv() {
         byte[] csvData = queryService.exportCommandesToCsv();
-        HttpHeaders headers = new HttpHeaders();
-        headers.set(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=commandes.csv");
-        headers.set(HttpHeaders.CONTENT_TYPE, "text/csv");
+        org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+        headers.set(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=commandes.csv");
+        headers.set(org.springframework.http.HttpHeaders.CONTENT_TYPE, "text/csv");
         return new ResponseEntity<>(csvData, headers, HttpStatus.OK);
     }
 
     @GetMapping("/commandes/{id}")
     public ResponseEntity<CommandeDTO> getCommande(@PathVariable Long id) {
-        return ResponseEntity.ok(queryService.getCommandeDtoById(id));
+        return ResponseEntity.ok(commandeService.getCommandeDtoById(id));
     }
 
     @PutMapping("/commandes/{id}")
-    public ResponseEntity<CommandeDTO> updateCommande(@PathVariable Long id, @Valid @RequestBody UpdateCommandeRequest request) {
+    public ResponseEntity<CommandeDTO> updateCommande(@PathVariable Long id,
+            @Valid @RequestBody UpdateCommandeRequest request) {
         return ResponseEntity.ok(commandeService.updateCommande(id, request));
     }
 
     @PatchMapping("/commandes/{id}/status")
-    public ResponseEntity<CommandeDTO> updateCommandeStatus(@PathVariable Long id, @Valid @RequestBody UpdateCommandeStatusRequest request) {
+    public ResponseEntity<CommandeDTO> updateCommandeStatus(@PathVariable Long id,
+            @Valid @RequestBody UpdateCommandeStatusRequest request) {
         return ResponseEntity.ok(commandeService.updateStatus(id, request));
     }
 
     @PatchMapping("/commandes/{id}/delivery-driver")
-    public ResponseEntity<Void> assignDeliveryDriver(@PathVariable Long id, @RequestBody UpdateDeliveryDriverRequest request) {
-        UpdateCommandeRequest update = new UpdateCommandeRequest();
-        update.setDeliveryDriverId(request.getDeliveryDriverId());
-        update.setScheduledDeliveryDate(request.getScheduledDeliveryDate());
-        commandeService.updateCommande(id, update);
+    public ResponseEntity<Void> assignDeliveryDriver(@PathVariable Long id,
+            @RequestBody UpdateDeliveryDriverRequest request) {
+        commandeService.updateCommande(id, UpdateCommandeRequest.builder()
+                .deliveryDriverId(request.getDeliveryDriverId())
+                .scheduledDeliveryDate(request.getScheduledDeliveryDate())
+                .build());
         return ResponseEntity.ok().build();
     }
 
@@ -134,9 +143,12 @@ public class AdminController {
         return ResponseEntity.noContent().build();
     }
 
+    // Get clients
     @GetMapping("/clients")
-    public ResponseEntity<List<ClientDto>> getClients(@RequestParam(required = false) String search) {
-        return ResponseEntity.ok(clientService.getClientsFiltered(search));
+    public ResponseEntity<List<ClientDto>> getClients(
+            @RequestParam(required = false) String search) {
+        List<ClientDto> clients = clientService.getClientsFiltered(search);
+        return ResponseEntity.ok(clients);
     }
 
     @GetMapping("/clients/statistics")
@@ -144,31 +156,42 @@ public class AdminController {
         return ResponseEntity.ok(clientService.getClientStatistics());
     }
 
+    // Get a single client
     @GetMapping("/clients/{id}")
     public ResponseEntity<ClientDto> getClient(@PathVariable Long id) {
         return ResponseEntity.ok(clientService.getClientById(id));
     }
 
-    @GetMapping("/clients/{id}/commandes")
+    // Get client commands
+    @GetMapping("/client/{id}")
     public ResponseEntity<List<CommandeDTO>> getClients(@PathVariable Long id) {
-        return ResponseEntity.ok(clientService.getClientCommandes(id));
+        List<CommandeDTO> commandes = clientService.getClientCommandes(id);
+        return ResponseEntity.ok(commandes);
     }
 
+    // ========== STATISTICS ENDPOINTS ==========
+
+    // Get today's statistics
     @GetMapping("/statistics/today")
     public ResponseEntity<StatisticsDTO> getTodayStatistics() {
         return ResponseEntity.ok(statisticsService.getTodayStatistics());
     }
 
+    // Get overall statistics
     @GetMapping("/statistics/overall")
     public ResponseEntity<StatisticsDTO> getOverallStatistics() {
         return ResponseEntity.ok(statisticsService.getOverallStatistics());
     }
 
+    // Get statistics by date range
     @PostMapping("/statistics/date-range")
-    public ResponseEntity<StatisticsDTO> getStatisticsByDateRange(@Valid @RequestBody DateRangeRequest request) {
-        return ResponseEntity.ok(statisticsService.getStatisticsByDateRange(request.getDateDebut(), request.getDateFin()));
+    public ResponseEntity<StatisticsDTO> getStatisticsByDateRange(
+            @Valid @RequestBody DateRangeRequest request) {
+        return ResponseEntity.ok(
+                statisticsService.getStatisticsByDateRange(request.getDateDebut(), request.getDateFin()));
     }
 
+    // Get statistics by date range (GET alternative)
     @GetMapping("/statistics/date-range")
     public ResponseEntity<StatisticsDTO> getStatisticsByDateRangeGet(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateDebut,
@@ -176,43 +199,53 @@ public class AdminController {
         return ResponseEntity.ok(statisticsService.getStatisticsByDateRange(dateDebut, dateFin));
     }
 
+    // Get daily statistics for specific date
     @GetMapping("/statistics/daily")
     public ResponseEntity<DailyStatisticsDTO> getDailyStatistics(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
         return ResponseEntity.ok(statisticsService.getDailyStatistics(date));
     }
 
+    // Get last N days statistics
     @GetMapping("/statistics/last-days")
-    public ResponseEntity<List<DailyStatisticsDTO>> getLastNDaysStatistics(@RequestParam(defaultValue = "7") int days) {
+    public ResponseEntity<List<DailyStatisticsDTO>> getLastNDaysStatistics(
+            @RequestParam(defaultValue = "7") int days) {
         return ResponseEntity.ok(statisticsService.getLastNDaysStatistics(days));
     }
 
+    // Get statistics by livreur
     @GetMapping("/statistics/livreur/{livreurId}")
     public ResponseEntity<StatisticsDTO> getStatisticsByLivreur(
             @PathVariable Long livreurId,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateDebut,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFin) {
-        return ResponseEntity.ok(statisticsService.getStatisticsByLivreur(livreurId, dateDebut, dateFin));
+        return ResponseEntity.ok(
+                statisticsService.getStatisticsByLivreur(livreurId, dateDebut, dateFin));
     }
 
-    @PatchMapping("/{id}/password")
-    public ResponseEntity<?> changeUserPassword(@PathVariable Long id, @Valid @RequestBody UsersChangePassword password) {
+    @PutMapping("/change-user-password/{id}")
+    public ResponseEntity<?> changeUserPassword(
+            @PathVariable Long id,
+            @Valid @RequestBody UsersChangePassword password) {
         userService.changePassword(id, password.getPassword());
         return ResponseEntity.ok(Map.of("message", "Mot de passe mis à jour avec succès"));
     }
 
     @PostMapping("/commandes")
-    public ResponseEntity<CommandeDTO> createCommande(@Valid @RequestBody CreateCommandeRequest request) {
+    public ResponseEntity<CommandeDTO> createCommande(
+            @Valid @RequestBody com.wash.laundry_app.command.CreateCommandeRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(commandeService.createCommande(request));
     }
 
     @PostMapping("/clients")
-    public ResponseEntity<ClientDto> createClient(@Valid @RequestBody ClientRegisterRequest request) {
+    public ResponseEntity<ClientDto> createClient(
+            @Valid @RequestBody com.wash.laundry_app.clients.ClientRegisterRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(clientService.createClient(request));
     }
 
     @PutMapping("/clients/{id}")
-    public ResponseEntity<ClientDto> updateClient(@PathVariable Long id, @Valid @RequestBody ClientRegisterRequest request) {
+    public ResponseEntity<ClientDto> updateClient(@PathVariable Long id,
+            @Valid @RequestBody com.wash.laundry_app.clients.ClientRegisterRequest request) {
         return ResponseEntity.ok(clientService.updateClient(id, request));
     }
 }

@@ -28,11 +28,13 @@ public class Commande {
     @JoinColumn(name = "client_id", nullable = false)
     private Client client;
 
+
+
     @Column(name = "numero_commande", unique = true, nullable = false, length = 50)
     private String numeroCommande;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(name = "status")
     private CommandeStatus status = CommandeStatus.PENDING_PICKUP;
 
     @Column(name = "date_creation", updatable = false)
@@ -58,10 +60,10 @@ public class Commande {
     private LocalDateTime datePaiement;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "mode_commande")
-    private ModeCommande mode;
+    @Column(name = "mode_commande", length = 20)
+    private ModeCommande mode; // IMMEDIATE, SCHEDULED
 
-    @Column(name = "delivery_type")
+    @Column(name = "delivery_type", length = 50)
     private String deliveryType;
 
     @Column(name = "scheduled_pickup_date")
@@ -73,17 +75,17 @@ public class Commande {
     @Column(name = "notes", length = 1000)
     private String notes;
 
-    @Column(name = "delivery_address", length = 500)
+    @Column(name = "delivery_address", columnDefinition = "TEXT")
     private String deliveryAddress;
 
-    @Column(name = "delivery_latitude", precision = 10, scale = 7)
-    private BigDecimal deliveryLatitude;
+    @Column(name = "delivery_latitude", precision = 10, scale = 8)
+    private java.math.BigDecimal deliveryLatitude;
 
-    @Column(name = "delivery_longitude", precision = 10, scale = 7)
-    private BigDecimal deliveryLongitude;
+    @Column(name = "delivery_longitude", precision = 11, scale = 8)
+    private java.math.BigDecimal deliveryLongitude;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "livreur_id")
+    @JoinColumn(name = "pickup_driver_id")
     private User livreur;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -94,9 +96,15 @@ public class Commande {
     @JoinColumn(name = "created_by_id")
     private User createdBy;
 
-    @Column(name = "self_submitted")
-    private boolean selfSubmitted;
+    @Column(name = "self_submitted", nullable = false)
+    private boolean selfSubmitted = false;
 
+    /**
+     * Optimistic locking — prevents concurrent status overwrites.
+     * If two users update the same order simultaneously, the second
+     * update will throw an OptimisticLockException instead of
+     * silently overwriting the first.
+     */
     @Version
     @Column(name = "version")
     private Long version;
@@ -110,7 +118,8 @@ public class Commande {
     @OneToMany(mappedBy = "commande", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Paiement> paiements = new ArrayList<>();
 
-    @OneToMany(mappedBy = "commande", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "commande", fetch = FetchType.LAZY)
+    @OrderBy("attemptedAt ASC")
     private List<OrderAttempt> attempts = new ArrayList<>();
 
     @Column(name = "created_at", updatable = false)
@@ -119,72 +128,157 @@ public class Commande {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    // livreur doubles as pickupDriver
-    public User getPickupDriver() { return livreur; }
-    public void setPickupDriver(User pickupDriver) { this.livreur = pickupDriver; }
+    // Explicit Getters/Setters to bypass Lombok failures
+    public Long getId() {
+        return id;
+    }
 
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
-    public Client getClient() { return client; }
-    public void setClient(Client client) { this.client = client; }
-    public User getLivreur() { return livreur; }
-    public void setLivreur(User livreur) { this.livreur = livreur; }
-    public User getDeliveryDriver() { return deliveryDriver; }
-    public void setDeliveryDriver(User deliveryDriver) { this.deliveryDriver = deliveryDriver; }
-    public User getCreatedBy() { return createdBy; }
-    public void setCreatedBy(User createdBy) { this.createdBy = createdBy; }
-    public String getNumeroCommande() { return numeroCommande; }
-    public void setNumeroCommande(String numeroCommande) { this.numeroCommande = numeroCommande; }
-    public CommandeStatus getStatus() { return status; }
-    public void setStatus(CommandeStatus status) { this.status = status; }
-    public LocalDateTime getDateCreation() { return dateCreation; }
-    public void setDateCreation(LocalDateTime dateCreation) { this.dateCreation = dateCreation; }
-    public LocalDateTime getDateValidation() { return dateValidation; }
-    public void setDateValidation(LocalDateTime dateValidation) { this.dateValidation = dateValidation; }
-    public LocalDateTime getDateLivraison() { return dateLivraison; }
-    public void setDateLivraison(LocalDateTime dateLivraison) { this.dateLivraison = dateLivraison; }
-    public BigDecimal getMontantTotal() { return montantTotal; }
-    public void setMontantTotal(BigDecimal montantTotal) { this.montantTotal = montantTotal; }
-    public BigDecimal getMontantPaye() { return montantPaye; }
-    public void setMontantPaye(BigDecimal montantPaye) { this.montantPaye = montantPaye; }
-    public ModePaiement getModePaiement() { return modePaiement; }
-    public void setModePaiement(ModePaiement modePaiement) { this.modePaiement = modePaiement; }
-    public LocalDateTime getDatePaiement() { return datePaiement; }
-    public void setDatePaiement(LocalDateTime datePaiement) { this.datePaiement = datePaiement; }
-    public ModeCommande getMode() { return mode; }
-    public void setMode(ModeCommande mode) { this.mode = mode; }
-    public String getDeliveryType() { return deliveryType; }
-    public void setDeliveryType(String deliveryType) { this.deliveryType = deliveryType; }
-    public LocalDateTime getScheduledPickupDate() { return scheduledPickupDate; }
-    public void setScheduledPickupDate(LocalDateTime scheduledPickupDate) { this.scheduledPickupDate = scheduledPickupDate; }
-    public LocalDateTime getScheduledDeliveryDate() { return scheduledDeliveryDate; }
-    public void setScheduledDeliveryDate(LocalDateTime scheduledDeliveryDate) { this.scheduledDeliveryDate = scheduledDeliveryDate; }
-    public String getNotes() { return notes; }
-    public void setNotes(String notes) { this.notes = notes; }
-    public String getDeliveryAddress() { return deliveryAddress; }
-    public void setDeliveryAddress(String deliveryAddress) { this.deliveryAddress = deliveryAddress; }
-    public BigDecimal getDeliveryLatitude() { return deliveryLatitude; }
-    public void setDeliveryLatitude(BigDecimal deliveryLatitude) { this.deliveryLatitude = deliveryLatitude; }
-    public BigDecimal getDeliveryLongitude() { return deliveryLongitude; }
-    public void setDeliveryLongitude(BigDecimal deliveryLongitude) { this.deliveryLongitude = deliveryLongitude; }
-    public boolean isSelfSubmitted() { return selfSubmitted; }
-    public void setSelfSubmitted(boolean selfSubmitted) { this.selfSubmitted = selfSubmitted; }
-    public Long getVersion() { return version; }
-    public void setVersion(Long version) { this.version = version; }
-    public List<CommandeTapis> getCommandeTapis() { return commandeTapis; }
-    public void setCommandeTapis(List<CommandeTapis> commandeTapis) { this.commandeTapis = commandeTapis; }
-    public List<CommandeImage> getImages() { return images; }
-    public void setImages(List<CommandeImage> images) { this.images = images; }
-    public List<Paiement> getPaiements() { return paiements; }
-    public void setPaiements(List<Paiement> paiements) { this.paiements = paiements; }
-    public List<OrderAttempt> getAttempts() { return attempts; }
-    public void setAttempts(List<OrderAttempt> attempts) { this.attempts = attempts; }
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public Client getClient() {
+        return client;
+    }
+
+    public void setClient(Client client) {
+        this.client = client;
+    }
+
+    public User getLivreur() {
+        return livreur;
+    }
+
+    public void setLivreur(User livreur) {
+        this.livreur = livreur;
+    }
+
+    /**
+     * Semantic alias for {@link #getLivreur()} — use this in all new code.
+     * The field is stored as pickup_driver_id in the database.
+     */
+    public User getPickupDriver() {
+        return livreur;
+    }
+
+    /**
+     * Semantic alias for {@link #setLivreur(User)} — use this in all new code.
+     */
+    public void setPickupDriver(User pickupDriver) {
+        this.livreur = pickupDriver;
+    }
+
+    public String getNumeroCommande() {
+        return numeroCommande;
+    }
+
+    public void setNumeroCommande(String numeroCommande) {
+        this.numeroCommande = numeroCommande;
+    }
+
+    public CommandeStatus getStatus() {
+        return status;
+    }
+
+    public void setStatus(CommandeStatus status) {
+        this.status = status;
+    }
+
+    public LocalDateTime getDateCreation() {
+        return dateCreation;
+    }
+
+    public void setDateCreation(LocalDateTime dateCreation) {
+        this.dateCreation = dateCreation;
+    }
+
+    public LocalDateTime getDateValidation() {
+        return dateValidation;
+    }
+
+    public void setDateValidation(LocalDateTime dateValidation) {
+        this.dateValidation = dateValidation;
+    }
+
+    public LocalDateTime getDateLivraison() {
+        return dateLivraison;
+    }
+
+    public void setDateLivraison(LocalDateTime dateLivraison) {
+        this.dateLivraison = dateLivraison;
+    }
+
+    public BigDecimal getMontantTotal() {
+        return montantTotal;
+    }
+
+    public void setMontantTotal(BigDecimal montantTotal) {
+        this.montantTotal = montantTotal;
+    }
+
+    public ModePaiement getModePaiement() {
+        return modePaiement;
+    }
+
+    public void setModePaiement(ModePaiement modePaiement) {
+        this.modePaiement = modePaiement;
+    }
+
+    public LocalDateTime getDatePaiement() {
+        return datePaiement;
+    }
+
+    public void setDatePaiement(LocalDateTime datePaiement) {
+        this.datePaiement = datePaiement;
+    }
+
+    public BigDecimal getMontantPaye() {
+        return montantPaye;
+    }
+
+    public void setMontantPaye(BigDecimal montantPaye) {
+        this.montantPaye = montantPaye;
+    }
+
+    public List<CommandeTapis> getCommandeTapis() {
+        return commandeTapis;
+    }
+
+    public void setCommandeTapis(List<CommandeTapis> commandeTapis) {
+        this.commandeTapis = commandeTapis;
+    }
+
+    public List<Paiement> getPaiements() {
+        return paiements;
+    }
+
+    public void setPaiements(List<Paiement> paiements) {
+        this.paiements = paiements;
+    }
+
+    public List<OrderAttempt> getAttempts() {
+        return attempts;
+    }
+
+    public void setAttempts(List<OrderAttempt> attempts) {
+        this.attempts = attempts;
+    }
+
+    public ModeCommande getMode() {
+        return mode;
+    }
+
+    public void setMode(ModeCommande mode) {
+        this.mode = mode;
+    }
 
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
         updatedAt = LocalDateTime.now();
         dateCreation = LocalDateTime.now();
+
+        // Auto-generate order number if not set
         if (numeroCommande == null) {
             numeroCommande = generateOrderNumber();
         }
@@ -195,22 +289,36 @@ public class Commande {
         updatedAt = LocalDateTime.now();
     }
 
+    public boolean isSelfSubmitted() { return selfSubmitted; }
+    public void setSelfSubmitted(boolean selfSubmitted) { this.selfSubmitted = selfSubmitted; }
+
+    public String getDeliveryAddress() { return deliveryAddress; }
+    public void setDeliveryAddress(String deliveryAddress) { this.deliveryAddress = deliveryAddress; }
+    public java.math.BigDecimal getDeliveryLatitude() { return deliveryLatitude; }
+    public void setDeliveryLatitude(java.math.BigDecimal deliveryLatitude) { this.deliveryLatitude = deliveryLatitude; }
+    public java.math.BigDecimal getDeliveryLongitude() { return deliveryLongitude; }
+    public void setDeliveryLongitude(java.math.BigDecimal deliveryLongitude) { this.deliveryLongitude = deliveryLongitude; }
+
+    // Helper method to generate order number
     private String generateOrderNumber() {
         return "CMD-" + LocalDateTime.now().getYear() + "-" + System.currentTimeMillis();
     }
 
+    // Helper method to add tapis to order
     public void addTapis(CommandeTapis tapis) {
         commandeTapis.add(tapis);
         tapis.setCommande(this);
         recalculateTotal();
     }
 
+    // Helper method to remove tapis from order
     public void removeTapis(CommandeTapis tapis) {
         commandeTapis.remove(tapis);
         tapis.setCommande(null);
         recalculateTotal();
     }
 
+    // Recalculate total amount
     public void recalculateTotal() {
         this.montantTotal = commandeTapis.stream()
                 .map(CommandeTapis::getSousTotal)

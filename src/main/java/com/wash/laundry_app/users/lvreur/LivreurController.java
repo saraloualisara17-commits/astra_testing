@@ -1,6 +1,8 @@
 package com.wash.laundry_app.users.lvreur;
 
 import com.wash.laundry_app.auth.AuthService;
+import com.wash.laundry_app.clients.ClientDto;
+import com.wash.laundry_app.clients.ClientSearchResponse;
 import com.wash.laundry_app.command.*;
 import com.wash.laundry_app.config.FileStorageService;
 import jakarta.validation.Valid;
@@ -9,12 +11,13 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
+@Deprecated
 @RestController
-@RequestMapping("/api/livreur")
+@RequestMapping({"/livreur", "/api/livreur"})
 @AllArgsConstructor
 public class LivreurController {
 
@@ -22,53 +25,72 @@ public class LivreurController {
     private final AuthService authService;
     private final FileStorageService fileStorageService;
 
+    // ========== ORDER MANAGEMENT ==========
+
+    // Get orders ready for delivery (status = LIVREE / Sorti)
     @GetMapping("/commandes/ready-for-delivery")
     public ResponseEntity<List<CommandeDTO>> getReadyForDelivery() {
-        return ResponseEntity.ok(commandeService.getReadyForDeliveryByDeliveryDriver());
+        List<CommandeDTO> commandes = commandeService.getReadyForDeliveryByDeliveryDriver();
+        return ResponseEntity.ok(commandes);
     }
 
+    // Record payment
     @PostMapping("/commandes/{id}/payment")
     public ResponseEntity<CommandeDTO> recordPayment(
             @PathVariable Long id,
             @Valid @RequestBody RecordPaymentRequest request) {
-        return ResponseEntity.ok(commandeService.recordPayment(id, request));
+        CommandeDTO commande = commandeService.recordPayment(id, request);
+        return ResponseEntity.ok(commande);
     }
 
-    @PutMapping("/commandes/{id}/annuler")
+    // Cancel delivery
+    @PutMapping("/commandes/{id}/cancel")
     public ResponseEntity<CommandeDTO> annulerCommande(@PathVariable Long id) {
         return ResponseEntity.ok(commandeService.annulerCommande(id));
     }
 
-    @GetMapping("/commandes/prete-count")
+    // Get count of ready orders
+    @GetMapping("/commandes/ready-count")
     public ResponseEntity<Map<String, Long>> getPreteCount() {
-        long count = commandeService.getLivreurDashboardStats().getReadyOrdersCount();
+        long count = commandeService.getReadyForDeliveryCountForDeliveryDriver();
         return ResponseEntity.ok(Map.of("readyOrdersCount", count));
     }
 
-    @GetMapping("/commandes/prete")
+    // Get list of ready orders
+    @GetMapping("/commandes/ready")
     public ResponseEntity<List<CommandeDTO>> getReadyOrders() {
-        return ResponseEntity.ok(commandeService.getReadyForDeliveryByDeliveryDriver());
+        List<CommandeDTO> commandes = commandeService.getReadyForDeliveryByDeliveryDriver();
+        return ResponseEntity.ok(commandes);
     }
 
+    // Get canceled deliveries
     @GetMapping("/commandes/canceled-deliveries")
     public ResponseEntity<List<CommandeDTO>> getCanceledDeliveries() {
-        return ResponseEntity.ok(commandeService.getPastDeliveriesForDriver());
+        List<CommandeDTO> commandes = commandeService.getCancelledOrdersForPickupDriver();
+        return ResponseEntity.ok(commandes);
     }
 
+    // Get orders pending pickup (status = PENDING_PICKUP, waiting at client's home)
     @GetMapping("/commandes/pending-pickup")
     public ResponseEntity<List<CommandeDTO>> getPendingPickup() {
-        return ResponseEntity.ok(commandeService.getPendingPickupOrdersForPickupDriver());
+        List<CommandeDTO> commandes = commandeService.getPendingPickupOrdersForPickupDriver();
+        return ResponseEntity.ok(commandes);
     }
 
+    // Past deliveries (DELIVERED orders where current user is the delivery driver)
     @GetMapping("/commandes/past-deliveries")
     public ResponseEntity<List<CommandeDTO>> getPastDeliveries() {
         return ResponseEntity.ok(commandeService.getPastDeliveriesForDriver());
     }
 
+    // Return to workplace
     @PatchMapping("/commandes/{id}/return")
     public ResponseEntity<CommandeDTO> returnToWorkplace(@PathVariable Long id) {
-        return ResponseEntity.ok(commandeService.returnToWorkplace(id));
+        CommandeDTO commande = commandeService.returnToWorkplace(id);
+        return ResponseEntity.ok(commande);
     }
+
+    // ========== DASHBOARD & STATS ==========
 
     @GetMapping("/dashboard/stats")
     public ResponseEntity<LivreurDashboardStatsDTO> getDashboardStats() {
@@ -80,18 +102,20 @@ public class LivreurController {
         return ResponseEntity.ok(commandeService.getPaymentTypes());
     }
 
+    // Update order items (pickup driver only, PENDING_PICKUP status only)
     @PatchMapping("/commandes/{id}/items")
     public ResponseEntity<CommandeDTO> updateOrderItems(
             @PathVariable Long id,
-            @RequestBody List<CreateCommandeRequest.TapisItem> items) {
+            @RequestBody java.util.List<CreateCommandeRequest.TapisItem> items) {
         return ResponseEntity.ok(commandeService.updateItemsByPickupDriver(id, items));
     }
 
     @PostMapping("/tapis/upload")
     public ResponseEntity<List<Map<String, String>>> uploadTapisImages(@RequestParam("files") MultipartFile[] files) {
-        List<Map<String, String>> result = Arrays.stream(files).map(file -> {
+        List<Map<String, String>> result = java.util.Arrays.stream(files).map(file -> {
             String fileName = fileStorageService.storeFile(file);
-            return Map.of("imageUrl", "/uploads/" + fileName);
+            String fileDownloadUri = "/uploads/" + fileName;
+            return Map.of("imageUrl", fileDownloadUri);
         }).toList();
         return ResponseEntity.ok(result);
     }

@@ -1,7 +1,6 @@
 package com.wash.laundry_app.users.employe;
 
 import com.wash.laundry_app.command.*;
-import com.wash.laundry_app.command.services.CommandeQueryService;
 import com.wash.laundry_app.config.FileStorageService;
 import jakarta.validation.Valid;
 import lombok.AllArgsConstructor;
@@ -13,32 +12,58 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
+@Deprecated
 @RestController
 @RequestMapping("/employe")
 @AllArgsConstructor
 public class EmployeController {
 
-    private final CommandeQueryService queryService;
+    private final com.wash.laundry_app.command.services.CommandeQueryService queryService;
     private final CommandeMapper commandeMapper;
     private final CommandeService commandeService;
     private final FileStorageService fileStorageService;
 
     @GetMapping("/commandes")
     public ResponseEntity<List<CommandDtoEmploye>> allCommandes() {
-        return ResponseEntity.ok(
-                queryService.getCommandesByStatus(CommandeStatus.PENDING_PICKUP).stream()
-                        .map(dto -> mapToEmployeDto(dto))
-                        .toList()
-        );
+        List<CommandDtoEmploye> commandes = queryService.getAllCommandes().stream()
+                .map(dto -> {
+                    // EmployeController legacy mapping for backward compatibility
+                    CommandDtoEmploye empDto = new CommandDtoEmploye();
+                    empDto.setId(dto.getId());
+                    empDto.setLivreur(dto.getLivreur());
+                    empDto.setDeliveryDriver(dto.getDeliveryDriver());
+                    empDto.setNumeroCommande(dto.getNumeroCommande());
+                    empDto.setStatus(dto.getStatus());
+                    empDto.setDateCreation(dto.getDateCreation());
+                    empDto.setDateValidation(dto.getDateValidation());
+                    empDto.setDateLivraison(dto.getDateLivraison());
+                    empDto.setCommandeTapis(dto.getCommandeTapis());
+                    empDto.setCreatedAt(dto.getCreatedAt());
+                    empDto.setUpdatedAt(dto.getUpdatedAt());
+                    return empDto;
+                }).toList();
+        return ResponseEntity.ok(commandes);
     }
 
     @GetMapping("/commandes/attente")
     public ResponseEntity<List<CommandDtoEmploye>> getPendingCommandes() {
-        return ResponseEntity.ok(
-                queryService.getCommandesByStatus(CommandeStatus.PENDING_PICKUP).stream()
-                        .map(dto -> mapToEmployeDto(dto))
-                        .toList()
-        );
+        List<CommandDtoEmploye> commandes = queryService.getCommandesByStatus(CommandeStatus.PENDING_PICKUP).stream()
+                .map(dto -> {
+                    CommandDtoEmploye empDto = new CommandDtoEmploye();
+                    empDto.setId(dto.getId());
+                    empDto.setLivreur(dto.getLivreur());
+                    empDto.setDeliveryDriver(dto.getDeliveryDriver());
+                    empDto.setNumeroCommande(dto.getNumeroCommande());
+                    empDto.setStatus(dto.getStatus());
+                    empDto.setDateCreation(dto.getDateCreation());
+                    empDto.setDateValidation(dto.getDateValidation());
+                    empDto.setDateLivraison(dto.getDateLivraison());
+                    empDto.setCommandeTapis(dto.getCommandeTapis());
+                    empDto.setCreatedAt(dto.getCreatedAt());
+                    empDto.setUpdatedAt(dto.getUpdatedAt());
+                    return empDto;
+                }).toList();
+        return ResponseEntity.ok(commandes);
     }
 
     @GetMapping("/commandes/count/attente")
@@ -48,11 +73,23 @@ public class EmployeController {
 
     @GetMapping("/commandes/retournee")
     public ResponseEntity<List<CommandDtoEmploye>> getReturnedCommandes() {
-        return ResponseEntity.ok(
-                queryService.getCommandesByStatus(CommandeStatus.PICKED_UP).stream()
-                        .map(dto -> mapToEmployeDto(dto))
-                        .toList()
-        );
+        List<CommandDtoEmploye> commandes = queryService.getCommandesByStatus(CommandeStatus.PICKED_UP).stream()
+                .map(dto -> {
+                    CommandDtoEmploye empDto = new CommandDtoEmploye();
+                    empDto.setId(dto.getId());
+                    empDto.setLivreur(dto.getLivreur());
+                    empDto.setDeliveryDriver(dto.getDeliveryDriver());
+                    empDto.setNumeroCommande(dto.getNumeroCommande());
+                    empDto.setStatus(dto.getStatus());
+                    empDto.setDateCreation(dto.getDateCreation());
+                    empDto.setDateValidation(dto.getDateValidation());
+                    empDto.setDateLivraison(dto.getDateLivraison());
+                    empDto.setCommandeTapis(dto.getCommandeTapis());
+                    empDto.setCreatedAt(dto.getCreatedAt());
+                    empDto.setUpdatedAt(dto.getUpdatedAt());
+                    return empDto;
+                }).toList();
+        return ResponseEntity.ok(commandes);
     }
 
     @GetMapping("/commandes/count/retournee")
@@ -73,29 +110,12 @@ public class EmployeController {
     }
 
     @PostMapping("/tapis/upload")
-    public ResponseEntity<List<Map<String, String>>> uploadTapisImages(
-            @RequestParam("files") MultipartFile[] files) {
+    public ResponseEntity<List<Map<String, String>>> uploadTapisImages(@RequestParam("files") MultipartFile[] files) {
         List<Map<String, String>> result = Arrays.stream(files).map(file -> {
             String fileName = fileStorageService.storeFile(file);
-            return Map.of("imageUrl", "/uploads/" + fileName);
+            String fileDownloadUri = "/uploads/" + fileName;
+            return Map.of("imageUrl", fileDownloadUri);
         }).toList();
         return ResponseEntity.ok(result);
-    }
-
-    private CommandDtoEmploye mapToEmployeDto(CommandeDTO dto) {
-        CommandDtoEmploye employe = new CommandDtoEmploye();
-        employe.setId(dto.getId());
-        employe.setNumeroCommande(dto.getNumeroCommande());
-        employe.setStatus(dto.getStatus());
-        employe.setMode(dto.getMode());
-        employe.setDateCreation(dto.getDateCreation());
-        employe.setDateValidation(dto.getDateValidation());
-        employe.setDateLivraison(dto.getDateLivraison());
-        employe.setLivreur(dto.getLivreur());
-        employe.setDeliveryDriver(dto.getDeliveryDriver());
-        employe.setCommandeTapis(dto.getCommandeTapis());
-        employe.setCreatedAt(dto.getCreatedAt());
-        employe.setUpdatedAt(dto.getUpdatedAt());
-        return employe;
     }
 }

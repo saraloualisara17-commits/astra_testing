@@ -1,15 +1,16 @@
 package com.wash.laundry_app.notifications;
 
 import com.wash.laundry_app.auth.AuthService;
-import lombok.AllArgsConstructor;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/notifications")
-@AllArgsConstructor
+@RequiredArgsConstructor
 public class NotificationController {
 
     private final NotificationService notificationService;
@@ -21,7 +22,7 @@ public class NotificationController {
         List<NotificationDTO> dtos = notificationService.getNotificationsForUser(userId)
                 .stream()
                 .map(this::mapToDTO)
-                .toList();
+                .collect(Collectors.toList());
         return ResponseEntity.ok(dtos);
     }
 
@@ -31,18 +32,18 @@ public class NotificationController {
         return ResponseEntity.ok(notificationService.getUnreadCount(userId));
     }
 
-    @PatchMapping("/{id}/read")
+    @PutMapping("/{id}/read")
     public ResponseEntity<Void> markAsRead(@PathVariable Long id) {
         Long userId = authService.currentUser().getId();
         notificationService.markAsRead(id, userId);
-        return ResponseEntity.noContent().build();
+        return ResponseEntity.ok().build();
     }
 
-    @PatchMapping("/read-all")
+    @PutMapping("/mark-all-read")
     public ResponseEntity<Void> markAllRead() {
         Long userId = authService.currentUser().getId();
         notificationService.markAllAsRead(userId);
-        return ResponseEntity.noContent().build();
+        return ResponseEntity.ok().build();
     }
 
     private NotificationDTO mapToDTO(Notification n) {

@@ -37,7 +37,7 @@ public class User {
     @Column(name = "is_active")
     private Boolean isActive = true;
 
-    @Column(name = "expo_push_token", length = 500)
+    @Column(name = "expo_push_token")
     private String expoPushToken;
 
     @Column(name = "created_at", updatable = false)
@@ -59,8 +59,6 @@ public class User {
     public void setRole(Role role) { this.role = role; }
     public Boolean getIsActive() { return isActive; }
     public void setIsActive(Boolean isActive) { this.isActive = isActive; }
-    public String getExpoPushToken() { return expoPushToken; }
-    public void setExpoPushToken(String expoPushToken) { this.expoPushToken = expoPushToken; }
 
     @PrePersist
     protected void onCreate() {
