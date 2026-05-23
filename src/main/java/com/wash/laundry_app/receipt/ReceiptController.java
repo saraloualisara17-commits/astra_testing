@@ -27,10 +27,16 @@ public class ReceiptController {
     private final PdfService pdfService;
     private final PaiementRepository paiementRepository;
 
+    // Each bag (@OneToMany List) must be fetched in its own query.
+    // Hibernate throws "cannot simultaneously fetch multiple bags" if two or more
+    // List collections are join-fetched in the same JPQL query.
     private Commande loadForReceipt(Long id) {
-        Commande commande = commandeRepository.findForReceiptById(id).orElseThrow(CommandeNotFoundException::new);
-        // Attempts live in a separate bag — must be fetched in a second query to avoid
-        // Hibernate "cannot simultaneously fetch multiple bags" with commandeTapis + paiements.
+        Commande commande = commandeRepository.findForReceiptById(id)
+                .orElseThrow(CommandeNotFoundException::new);
+        commandeRepository.findWithItemsById(id)
+                .ifPresent(c -> commande.setCommandeTapis(c.getCommandeTapis()));
+        commandeRepository.findWithPaiementsById(id)
+                .ifPresent(c -> commande.setPaiements(c.getPaiements()));
         commandeRepository.findWithAttemptsById(id)
                 .ifPresent(c -> commande.setAttempts(c.getAttempts()));
         return commande;
