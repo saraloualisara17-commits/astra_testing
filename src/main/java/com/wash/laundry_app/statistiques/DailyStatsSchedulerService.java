@@ -31,7 +31,8 @@ public class DailyStatsSchedulerService {
     @Transactional
     public void computeStatsForDate(LocalDate date) {
         long nombreCommandes = commandeRepository.countCommandesByDate(date);
-        BigDecimal revenusTotal = commandeRepository.getRevenueByDate(date);
+        Double revenuesTotalRaw = commandeRepository.getRevenueByDate(date);
+        BigDecimal revenusTotal = revenuesTotalRaw != null ? BigDecimal.valueOf(revenuesTotalRaw) : null;
         long nombreTapisTraites = commandeRepository.countItemsByDate(date);
 
         StatistiqueJournaliere stat = statRepository.findByDate(date)

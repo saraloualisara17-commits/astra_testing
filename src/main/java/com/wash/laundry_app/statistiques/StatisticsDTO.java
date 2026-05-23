@@ -14,24 +14,30 @@ import java.util.Map;
 @NoArgsConstructor
 @Builder
 public class StatisticsDTO {
-    // Today's statistics
     private Long totalCommandesToday;
     private BigDecimal revenuesToday;
+    private Long totalClients;
     private Long commandesEnAttente;
     private Long commandesValidees;
     private Long commandesEnTraitement;
     private Long commandesPretes;
     private Long commandesLivrees;
     private Long commandesPayees;
-
-    // Overall statistics
     private Long totalCommandes;
+    private BigDecimal totalRevenue;
     private BigDecimal totalRevenues;
-
-    // By status
     private Map<String, Long> commandesByStatus;
-
-    // Date range
     private LocalDate dateDebut;
     private LocalDate dateFin;
+    private Map<String, Object> unpaid;
+    private Long recuesCount;
+    private Long recuesItems;
+    private BigDecimal recuesM2;
+    private BigDecimal recuesTotal;
+    private Long livreesCount;
+    private Long livreesItems;
+    private BigDecimal livreesM2;
+    private BigDecimal livreesTotal;
+    private BigDecimal livreesPaid;
+    private BigDecimal livreesUnpaid;
 }

@@ -1,6 +1,6 @@
 package com.wash.laundry_app.command;
 
-import com.wash.laundry_app.tapis.Tapis;
+import com.wash.laundry_app.catalog.Product;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -8,6 +8,8 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "commande_tapis")
@@ -25,23 +27,17 @@ public class CommandeTapis {
     private Commande commande;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "tapis_id", nullable = false)
-    private Tapis tapis;
+    @JoinColumn(name = "product_id")
+    private Product product;
 
     @Column(nullable = false)
     private Integer quantite = 1;
 
-    @Column(name = "prix_unitaire", nullable = false, precision = 10, scale = 2)
+    @Column(name = "prix_unitaire", precision = 10, scale = 2)
     private BigDecimal prixUnitaire;
 
-    @Column(name = "sous_total", nullable = false, precision = 10, scale = 2)
+    @Column(name = "sous_total", precision = 10, scale = 2)
     private BigDecimal sousTotal;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private TapisEtat etat = TapisEtat.en_attente;
-
-    // ── Dimension-based pricing fields ──────────────────────────────────────
 
     @Column(precision = 10, scale = 2)
     private BigDecimal largeur;
@@ -55,9 +51,33 @@ public class CommandeTapis {
     @Column(name = "prix_final", precision = 10, scale = 2)
     private BigDecimal prixFinal;
 
+    @Column(precision = 10, scale = 2)
+    private BigDecimal longueur;
+
+    @Column(precision = 10, scale = 2)
+    private BigDecimal poids;
+
+    @Column(name = "remise_montant", precision = 10, scale = 2)
+    private BigDecimal remiseMontant;
+
+    @Column(name = "tag_numero", length = 50)
+    private String tagNumero;
+
+    @Column(length = 500)
+    private String notes;
+
+    @Column(length = 100)
+    private String couleur;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "mode_tarification", length = 20)
     private ModeTarification modeTarification;
+
+    @Column(name = "remise_raison", length = 200)
+    private String remiseRaison;
+
+    @OneToMany(mappedBy = "commandeTapis", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<CommandeImage> images = new ArrayList<>();
 
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
@@ -65,21 +85,18 @@ public class CommandeTapis {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    // Explicit Getters/Setters to bypass Lombok failures
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
     public Commande getCommande() { return commande; }
     public void setCommande(Commande commande) { this.commande = commande; }
-    public Tapis getTapis() { return tapis; }
-    public void setTapis(Tapis tapis) { this.tapis = tapis; }
+    public Product getProduct() { return product; }
+    public void setProduct(Product product) { this.product = product; }
     public Integer getQuantite() { return quantite; }
     public void setQuantite(Integer quantite) { this.quantite = quantite; }
     public BigDecimal getPrixUnitaire() { return prixUnitaire; }
     public void setPrixUnitaire(BigDecimal prixUnitaire) { this.prixUnitaire = prixUnitaire; }
     public BigDecimal getSousTotal() { return sousTotal; }
     public void setSousTotal(BigDecimal sousTotal) { this.sousTotal = sousTotal; }
-    public TapisEtat getEtat() { return etat; }
-    public void setEtat(TapisEtat etat) { this.etat = etat; }
     public BigDecimal getLargeur() { return largeur; }
     public void setLargeur(BigDecimal largeur) { this.largeur = largeur; }
     public BigDecimal getHauteur() { return hauteur; }
@@ -88,8 +105,28 @@ public class CommandeTapis {
     public void setPrixCalcule(BigDecimal prixCalcule) { this.prixCalcule = prixCalcule; }
     public BigDecimal getPrixFinal() { return prixFinal; }
     public void setPrixFinal(BigDecimal prixFinal) { this.prixFinal = prixFinal; }
+    public BigDecimal getLongueur() { return longueur; }
+    public void setLongueur(BigDecimal longueur) { this.longueur = longueur; }
+    public BigDecimal getPoids() { return poids; }
+    public void setPoids(BigDecimal poids) { this.poids = poids; }
+    public BigDecimal getRemiseMontant() { return remiseMontant; }
+    public void setRemiseMontant(BigDecimal remiseMontant) { this.remiseMontant = remiseMontant; }
+    public String getTagNumero() { return tagNumero; }
+    public void setTagNumero(String tagNumero) { this.tagNumero = tagNumero; }
+    public String getNotes() { return notes; }
+    public void setNotes(String notes) { this.notes = notes; }
+    public String getCouleur() { return couleur; }
+    public void setCouleur(String couleur) { this.couleur = couleur; }
     public ModeTarification getModeTarification() { return modeTarification; }
     public void setModeTarification(ModeTarification modeTarification) { this.modeTarification = modeTarification; }
+    public String getRemiseRaison() { return remiseRaison; }
+    public void setRemiseRaison(String remiseRaison) { this.remiseRaison = remiseRaison; }
+    public List<CommandeImage> getImages() { return images; }
+    public void setImages(List<CommandeImage> images) { this.images = images; }
+    public LocalDateTime getCreatedAt() { return createdAt; }
+    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+    public LocalDateTime getUpdatedAt() { return updatedAt; }
+    public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
 
     @PrePersist
     protected void onCreate() {
@@ -104,7 +141,6 @@ public class CommandeTapis {
         calculateSousTotal();
     }
 
-    // Calculate subtotal — uses prixFinal if set, otherwise falls back to prixUnitaire
     public void calculateSousTotal() {
         BigDecimal basePrice = (prixFinal != null) ? prixFinal : prixUnitaire;
         if (basePrice != null && quantite != null) {

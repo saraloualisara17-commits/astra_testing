@@ -4,7 +4,6 @@ import com.wash.laundry_app.command.Commande;
 import com.wash.laundry_app.command.CommandeRepository;
 import com.wash.laundry_app.command.CommandeStatus;
 import lombok.AllArgsConstructor;
-import lombok.Builder;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -21,7 +20,6 @@ public class StatisticsService {
 
     private final CommandeRepository commandeRepository;
 
-    // Get today's statistics
     public StatisticsDTO getTodayStatistics() {
         Long totalCommandesToday = commandeRepository.countTodayCommandes();
         Double revenuesToday = commandeRepository.getTodayRevenue();
@@ -29,24 +27,23 @@ public class StatisticsService {
         return StatisticsDTO.builder()
                 .totalCommandesToday(totalCommandesToday)
                 .revenuesToday(revenuesToday != null ? BigDecimal.valueOf(revenuesToday) : BigDecimal.ZERO)
-                .commandesEnAttente(commandeRepository.countTodayCommandesByStatus(CommandeStatus.en_attente))
-                .commandesValidees(commandeRepository.countTodayCommandesByStatus(CommandeStatus.validee))
-                .commandesEnTraitement(commandeRepository.countTodayCommandesByStatus(CommandeStatus.en_traitement))
-                .commandesPretes(commandeRepository.countTodayCommandesByStatus(CommandeStatus.prete))
-                .commandesLivrees(commandeRepository.countTodayCommandesByStatus(CommandeStatus.livree))
-                .commandesPayees(commandeRepository.countTodayCommandesByStatus(CommandeStatus.payee))
+                .commandesEnAttente(commandeRepository.countTodayCommandesByStatus(CommandeStatus.PENDING_PICKUP))
+                .commandesValidees(commandeRepository.countTodayCommandesByStatus(CommandeStatus.PICKED_UP))
+                .commandesEnTraitement(commandeRepository.countTodayCommandesByStatus(CommandeStatus.IN_PROCESS))
+                .commandesPretes(commandeRepository.countTodayCommandesByStatus(CommandeStatus.READY_FOR_DELIVERY))
+                .commandesLivrees(commandeRepository.countTodayCommandesByStatus(CommandeStatus.DELIVERED))
+                .commandesPayees(commandeRepository.countTodayCommandesByStatus(CommandeStatus.DELIVERED))
                 .dateDebut(LocalDate.now())
                 .dateFin(LocalDate.now())
                 .build();
     }
 
-    // Get overall statistics
     public StatisticsDTO getOverallStatistics() {
         List<Commande> allCommandes = commandeRepository.findAll();
 
         long totalCommandes = allCommandes.size();
         BigDecimal totalRevenues = allCommandes.stream()
-                .filter(c -> c.getStatus() == CommandeStatus.payee)
+                .filter(c -> c.getStatus() == CommandeStatus.DELIVERED)
                 .map(Commande::getMontantTotal)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
@@ -59,16 +56,15 @@ public class StatisticsService {
                 .totalCommandes(totalCommandes)
                 .totalRevenues(totalRevenues)
                 .commandesByStatus(commandesByStatus)
-                .commandesEnAttente(commandeRepository.countByStatus(CommandeStatus.en_attente))
-                .commandesValidees(commandeRepository.countByStatus(CommandeStatus.validee))
-                .commandesEnTraitement(commandeRepository.countByStatus(CommandeStatus.en_traitement))
-                .commandesPretes(commandeRepository.countByStatus(CommandeStatus.prete))
-                .commandesLivrees(commandeRepository.countByStatus(CommandeStatus.livree))
-                .commandesPayees(commandeRepository.countByStatus(CommandeStatus.payee))
+                .commandesEnAttente(commandeRepository.countByStatus(CommandeStatus.PENDING_PICKUP))
+                .commandesValidees(commandeRepository.countByStatus(CommandeStatus.PICKED_UP))
+                .commandesEnTraitement(commandeRepository.countByStatus(CommandeStatus.IN_PROCESS))
+                .commandesPretes(commandeRepository.countByStatus(CommandeStatus.READY_FOR_DELIVERY))
+                .commandesLivrees(commandeRepository.countByStatus(CommandeStatus.DELIVERED))
+                .commandesPayees(commandeRepository.countByStatus(CommandeStatus.DELIVERED))
                 .build();
     }
 
-    // Get statistics by date range
     public StatisticsDTO getStatisticsByDateRange(LocalDate dateDebut, LocalDate dateFin) {
         LocalDateTime start = dateDebut.atStartOfDay();
         LocalDateTime end = dateFin.atTime(LocalTime.MAX);
@@ -77,15 +73,13 @@ public class StatisticsService {
 
         long totalCommandes = commandes.size();
         BigDecimal totalRevenues = commandes.stream()
-                .filter(c -> c.getStatus() == CommandeStatus.payee)
+                .filter(c -> c.getStatus() == CommandeStatus.DELIVERED)
                 .map(Commande::getMontantTotal)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         Map<String, Long> commandesByStatus = new HashMap<>();
         for (CommandeStatus status : CommandeStatus.values()) {
-            long count = commandes.stream()
-                    .filter(c -> c.getStatus() == status)
-                    .count();
+            long count = commandes.stream().filter(c -> c.getStatus() == status).count();
             commandesByStatus.put(status.name(), count);
         }
 
@@ -93,18 +87,17 @@ public class StatisticsService {
                 .totalCommandes(totalCommandes)
                 .totalRevenues(totalRevenues)
                 .commandesByStatus(commandesByStatus)
-                .commandesEnAttente(commandesByStatus.get(CommandeStatus.en_attente.name()))
-                .commandesValidees(commandesByStatus.get(CommandeStatus.validee.name()))
-                .commandesEnTraitement(commandesByStatus.get(CommandeStatus.en_traitement.name()))
-                .commandesPretes(commandesByStatus.get(CommandeStatus.prete.name()))
-                .commandesLivrees(commandesByStatus.get(CommandeStatus.livree.name()))
-                .commandesPayees(commandesByStatus.get(CommandeStatus.payee.name()))
+                .commandesEnAttente(commandesByStatus.getOrDefault(CommandeStatus.PENDING_PICKUP.name(), 0L))
+                .commandesValidees(commandesByStatus.getOrDefault(CommandeStatus.PICKED_UP.name(), 0L))
+                .commandesEnTraitement(commandesByStatus.getOrDefault(CommandeStatus.IN_PROCESS.name(), 0L))
+                .commandesPretes(commandesByStatus.getOrDefault(CommandeStatus.READY_FOR_DELIVERY.name(), 0L))
+                .commandesLivrees(commandesByStatus.getOrDefault(CommandeStatus.DELIVERED.name(), 0L))
+                .commandesPayees(commandesByStatus.getOrDefault(CommandeStatus.DELIVERED.name(), 0L))
                 .dateDebut(dateDebut)
                 .dateFin(dateFin)
                 .build();
     }
 
-    // Get daily statistics for a specific date
     public DailyStatisticsDTO getDailyStatistics(LocalDate date) {
         Long nombreCommandes = commandeRepository.countCommandesByDate(date);
         Double revenusTotal = commandeRepository.getRevenueByDate(date);
@@ -113,23 +106,26 @@ public class StatisticsService {
                 .date(date)
                 .nombreCommandes(nombreCommandes)
                 .revenusTotal(revenusTotal != null ? BigDecimal.valueOf(revenusTotal) : BigDecimal.ZERO)
-                .nombreTapisTraites(0) // TODO: Calculate from commande_tapis
+                .nombreTapisTraites(0)
                 .build();
     }
 
-    // Get statistics for last N days
     public List<DailyStatisticsDTO> getLastNDaysStatistics(int days) {
         List<DailyStatisticsDTO> statistics = new java.util.ArrayList<>();
-
         for (int i = days - 1; i >= 0; i--) {
-            LocalDate date = LocalDate.now().minusDays(i);
-            statistics.add(getDailyStatistics(date));
+            statistics.add(getDailyStatistics(LocalDate.now().minusDays(i)));
         }
-
         return statistics;
     }
 
-    // Get statistics by livreur
+    public java.util.Map<String, Object> getStatusOverview() {
+        java.util.Map<String, Object> overview = new HashMap<>();
+        for (com.wash.laundry_app.command.CommandeStatus status : com.wash.laundry_app.command.CommandeStatus.values()) {
+            overview.put(status.name(), commandeRepository.countByStatus(status));
+        }
+        return overview;
+    }
+
     public StatisticsDTO getStatisticsByLivreur(Long livreurId, LocalDate dateDebut, LocalDate dateFin) {
         LocalDateTime start = dateDebut.atStartOfDay();
         LocalDateTime end = dateFin.atTime(LocalTime.MAX);
@@ -138,7 +134,7 @@ public class StatisticsService {
 
         long totalCommandes = commandes.size();
         BigDecimal totalRevenues = commandes.stream()
-                .filter(c -> c.getStatus() == CommandeStatus.payee)
+                .filter(c -> c.getStatus() == CommandeStatus.DELIVERED)
                 .map(Commande::getMontantTotal)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 

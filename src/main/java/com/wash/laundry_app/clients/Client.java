@@ -5,9 +5,7 @@ import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import org.w3c.dom.Text;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -35,14 +33,15 @@ public class Client {
     @OneToMany(mappedBy = "client", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<ClientAddress> addresses = new ArrayList<>();
 
+    @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "created_by_livreur_id", nullable = false)
-    private User createdByLivreur;
+    @JoinColumn(name = "created_by_id")
+    private User createdBy;
 
     @PrePersist
     protected void onCreate() {
@@ -54,5 +53,21 @@ public class Client {
     protected void onUpdate() {
         updatedAt = LocalDateTime.now();
     }
-}
 
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+    public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
+    public String getEmail() { return email; }
+    public void setEmail(String email) { this.email = email; }
+    public List<ClientPhone> getPhones() { return phones; }
+    public void setPhones(List<ClientPhone> phones) { this.phones = phones; }
+    public List<ClientAddress> getAddresses() { return addresses; }
+    public void setAddresses(List<ClientAddress> addresses) { this.addresses = addresses; }
+    public LocalDateTime getCreatedAt() { return createdAt; }
+    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+    public LocalDateTime getUpdatedAt() { return updatedAt; }
+    public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
+    public User getCreatedBy() { return createdBy; }
+    public void setCreatedBy(User createdBy) { this.createdBy = createdBy; }
+}
