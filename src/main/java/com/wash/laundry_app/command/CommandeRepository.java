@@ -20,8 +20,12 @@ public interface CommandeRepository extends JpaRepository<Commande, Long> {
 
     @Query("SELECT DISTINCT c FROM Commande c " +
            "LEFT JOIN FETCH c.client cl " +
+           "LEFT JOIN FETCH cl.phones " +
+           "LEFT JOIN FETCH cl.addresses " +
            "LEFT JOIN FETCH c.commandeTapis ct " +
            "LEFT JOIN FETCH ct.product " +
+           "LEFT JOIN FETCH c.paiements " +
+           "LEFT JOIN FETCH c.livreur " +
            "WHERE c.id = :id")
     Optional<Commande> findForReceiptById(@Param("id") Long id);
 
