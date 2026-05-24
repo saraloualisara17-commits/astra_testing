@@ -99,6 +99,10 @@ public class Commande {
     @Column(name = "self_submitted", nullable = false)
     private boolean selfSubmitted = false;
 
+    /** NULL = single-branch mode; set when multi-branch is activated. */
+    @Column(name = "branch_id")
+    private Long branchId;
+
     /**
      * Optimistic locking — prevents concurrent status overwrites.
      * If two users update the same order simultaneously, the second

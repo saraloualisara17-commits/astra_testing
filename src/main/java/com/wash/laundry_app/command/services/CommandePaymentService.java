@@ -29,6 +29,21 @@ public class CommandePaymentService {
     @Transactional
     public CommandeDTO recordPayment(Long id, RecordPaymentRequest request) {
         User currentUser = authService.currentUser();
+
+        // ── Idempotency check ────────────────────────────────────────────────
+        // If the client provided an idempotency key and we already have a payment
+        // with that key, return the order as if the operation succeeded without
+        // creating a duplicate. This handles the common case of the mobile app
+        // retrying after a network timeout.
+        if (request.getIdempotencyKey() != null && !request.getIdempotencyKey().isBlank()) {
+            var existing = paiementRepository.findByIdempotencyKey(request.getIdempotencyKey());
+            if (existing.isPresent()) {
+                Commande cached = existing.get().getCommande();
+                return commandeMapper.toDto(commandeRepository.findById(cached.getId())
+                        .orElseThrow(CommandeNotFoundException::new));
+            }
+        }
+
         Commande commande = commandeRepository.findById(id)
                 .orElseThrow(CommandeNotFoundException::new);
 
@@ -49,6 +64,7 @@ public class CommandePaymentService {
                 .note(request.getNote() != null ? request.getNote() : "Paiement enregistré")
                 .recordedBy(currentUser)
                 .modePaiement(mode)
+                .idempotencyKey(request.getIdempotencyKey())
                 .build();
         paiementRepository.save(paiement);
 

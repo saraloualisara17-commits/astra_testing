@@ -10,40 +10,29 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "audit_logs")
+@Table(name = "login_events")
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class AuditLog {
+public class LoginEvent {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false)
-    private String actionType; // e.g., ORDER_STATUS_CHANGE, PAYMENT_RECORDED, etc.
-
-    @Column(nullable = false)
-    private String entityType; // e.g., COMMANDE, PAIEMENT
-
-    private Long entityId;
-
-    @Column(columnDefinition = "TEXT")
-    private String previousValue;
-
-    @Column(columnDefinition = "TEXT")
-    private String newValue;
-
-    @Column(columnDefinition = "TEXT")
-    private String metadata;
-
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id")
     private User user;
 
+    @Column(nullable = false, length = 255)
+    private String email;
+
     @Column(nullable = false)
-    private LocalDateTime timestamp;
+    private boolean success;
+
+    @Column(name = "failure_reason", length = 64)
+    private String failureReason;
 
     @Column(name = "ip_address", length = 64)
     private String ipAddress;
@@ -51,6 +40,11 @@ public class AuditLog {
     @Column(name = "user_agent", length = 512)
     private String userAgent;
 
-    @Column(name = "request_id", length = 64)
-    private String requestId;
+    @Column(name = "created_at", nullable = false)
+    private LocalDateTime createdAt;
+
+    @PrePersist
+    protected void onCreate() {
+        if (createdAt == null) createdAt = LocalDateTime.now();
+    }
 }
