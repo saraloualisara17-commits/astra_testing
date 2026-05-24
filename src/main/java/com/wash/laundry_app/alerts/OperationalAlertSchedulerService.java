@@ -1,6 +1,8 @@
 package com.wash.laundry_app.alerts;
 
 import com.wash.laundry_app.command.CommandeRepository;
+import com.wash.laundry_app.notifications.NotificationService;
+import com.wash.laundry_app.users.Role;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -34,6 +36,7 @@ public class OperationalAlertSchedulerService {
 
     private final CommandeRepository commandeRepository;
     private final OperationalAlertRepository alertRepository;
+    private final NotificationService notificationService;
 
     /** Runs every 30 minutes. Scans for overdue pickups and delayed deliveries. */
     @Scheduled(fixedDelayString = "${alerts.scan-interval-ms:1800000}")
@@ -55,21 +58,30 @@ public class OperationalAlertSchedulerService {
             if (alertRepository.existsByAlertTypeAndClient_IdAndResolvedFalse(UNPAID_DEBT, order.getClient().getId())) {
                 continue;
             }
+            java.math.BigDecimal unpaid = order.getMontantTotal().subtract(
+                    order.getMontantPaye() != null ? order.getMontantPaye() : java.math.BigDecimal.ZERO);
+            String msg = String.format(
+                    "Client '%s' has an unpaid balance of %.2f MAD on order #%s delivered on %s.",
+                    order.getClient().getName(),
+                    unpaid,
+                    order.getNumeroCommande(),
+                    order.getDateLivraison() != null ? order.getDateLivraison().toLocalDate() : "N/A");
             var alert = OperationalAlert.builder()
                     .alertType(UNPAID_DEBT)
                     .commande(order)
                     .client(order.getClient())
                     .severity("WARNING")
-                    .message(String.format(
-                            "Client '%s' has an unpaid balance of %.2f MAD on order #%s delivered on %s.",
-                            order.getClient().getName(),
-                            order.getMontantTotal().subtract(
-                                    order.getMontantPaye() != null ? order.getMontantPaye() : java.math.BigDecimal.ZERO),
-                            order.getNumeroCommande(),
-                            order.getDateLivraison() != null ? order.getDateLivraison().toLocalDate() : "N/A"))
+                    .message(msg)
                     .resolved(false)
                     .build();
             alertRepository.save(alert);
+            notificationService.notifyRole(
+                    Role.ADMIN,
+                    "Dette Impayée",
+                    "Commande #" + order.getNumeroCommande() + " — solde impayé de " + String.format("%.2f", unpaid) + " MAD",
+                    UNPAID_DEBT,
+                    order.getId().toString()
+            );
             created++;
         }
         if (created > 0) {
@@ -100,6 +112,13 @@ public class OperationalAlertSchedulerService {
                     .resolved(false)
                     .build();
             alertRepository.save(alert);
+            notificationService.notifyRole(
+                    Role.ADMIN,
+                    "Collecte en Retard",
+                    "Commande #" + order.getNumeroCommande() + " attend depuis plus de " + overduePickupHours + "h",
+                    OVERDUE_PICKUP,
+                    order.getId().toString()
+            );
             created++;
         }
         if (created > 0) {
@@ -130,6 +149,23 @@ public class OperationalAlertSchedulerService {
                     .resolved(false)
                     .build();
             alertRepository.save(alert);
+            notificationService.notifyRole(
+                    Role.ADMIN,
+                    "Livraison Retardée",
+                    "Commande #" + order.getNumeroCommande() + " est prête depuis plus de " + delayedDeliveryHours + "h",
+                    DELAYED_DELIVERY,
+                    order.getId().toString()
+            );
+            // Also notify the assigned delivery driver if there is one
+            if (order.getDeliveryDriver() != null) {
+                notificationService.createNotification(
+                        order.getDeliveryDriver(),
+                        "Livraison en Attente",
+                        "La commande #" + order.getNumeroCommande() + " vous attend depuis plus de " + delayedDeliveryHours + "h",
+                        DELAYED_DELIVERY,
+                        order.getId().toString()
+                );
+            }
             created++;
         }
         if (created > 0) {

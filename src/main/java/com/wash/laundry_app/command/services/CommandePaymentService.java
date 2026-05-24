@@ -83,8 +83,26 @@ public class CommandePaymentService {
     }
 
     @Transactional
-    public PaiementDTO addPayment(Long id, BigDecimal amount, String note, ModePaiement modePaiement) {
+    public PaiementDTO addPayment(Long id, BigDecimal amount, String note, ModePaiement modePaiement, String idempotencyKey) {
         User currentUser = authService.currentUser();
+
+        // ── Idempotency check ────────────────────────────────────────────────
+        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+            var existing = paiementRepository.findByIdempotencyKey(idempotencyKey);
+            if (existing.isPresent()) {
+                Paiement p = existing.get();
+                return PaiementDTO.builder()
+                        .id(p.getId())
+                        .commandeId(p.getCommande().getId())
+                        .montant(p.getMontant())
+                        .datePaiement(p.getDatePaiement())
+                        .note(p.getNote())
+                        .recordedByName(p.getRecordedBy() != null ? p.getRecordedBy().getName() : null)
+                        .modePaiement(p.getModePaiement())
+                        .build();
+            }
+        }
+
         Commande commande = commandeRepository.findById(id)
                 .orElseThrow(CommandeNotFoundException::new);
 
@@ -102,6 +120,7 @@ public class CommandePaymentService {
                 .note(note)
                 .recordedBy(currentUser)
                 .modePaiement(mode)
+                .idempotencyKey(idempotencyKey)
                 .build();
         paiement = paiementRepository.save(paiement);
 

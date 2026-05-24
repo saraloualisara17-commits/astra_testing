@@ -133,36 +133,80 @@ public class OrderSideEffectListener {
         commandeRepository.findById(event.orderId()).ifPresent(commande -> {
             String orderNum = commande.getNumeroCommande();
 
-            if (event.newStatus() == CommandeStatus.READY_FOR_DELIVERY) {
-                // Notify assigned delivery driver that the order is ready to collect
-                if (commande.getDeliveryDriver() != null) {
-                    notificationService.createNotification(
-                            commande.getDeliveryDriver(),
+            switch (event.newStatus()) {
+
+                case PICKED_UP -> {
+                    // Notify admins that pickup was completed
+                    notificationService.notifyRole(
+                            Role.ADMIN,
+                            "Collecte Effectuée",
+                            "Commande #" + orderNum + " a été collectée.",
+                            "ORDER_PICKED_UP",
+                            event.orderId().toString()
+                    );
+                }
+
+                case READY_FOR_DELIVERY -> {
+                    // Notify assigned delivery driver that the order is ready
+                    if (commande.getDeliveryDriver() != null) {
+                        notificationService.createNotification(
+                                commande.getDeliveryDriver(),
+                                "Commande Prête",
+                                "La commande #" + orderNum + " est prête pour la livraison.",
+                                "ORDER_READY",
+                                event.orderId().toString()
+                        );
+                    }
+                    notificationService.notifyRole(
+                            Role.ADMIN,
                             "Commande Prête",
-                            "La commande #" + orderNum + " est prête pour la livraison.",
+                            "Commande #" + orderNum + " est prête pour la livraison.",
                             "ORDER_READY",
                             event.orderId().toString()
                     );
                 }
-                // Also notify admins so they know the board has changed
-                notificationService.notifyRole(
-                        Role.ADMIN,
-                        "Commande Prête",
-                        "Commande #" + orderNum + " est prête pour la livraison.",
-                        "ORDER_READY",
-                        event.orderId().toString()
-                );
-            }
 
-            if (event.newStatus() == CommandeStatus.DELIVERED) {
-                // Notify admins that delivery is confirmed
-                notificationService.notifyRole(
-                        Role.ADMIN,
-                        "Livraison Confirmée",
-                        "Commande #" + orderNum + " a été livrée avec succès.",
-                        "ORDER_DELIVERED",
-                        event.orderId().toString()
-                );
+                case DELIVERED -> {
+                    notificationService.notifyRole(
+                            Role.ADMIN,
+                            "Livraison Confirmée",
+                            "Commande #" + orderNum + " a été livrée avec succès.",
+                            "ORDER_DELIVERED",
+                            event.orderId().toString()
+                    );
+                }
+
+                case CANCELLED -> {
+                    // Notify admins; also notify pickup/delivery driver if assigned
+                    notificationService.notifyRole(
+                            Role.ADMIN,
+                            "Commande Annulée",
+                            "Commande #" + orderNum + " a été annulée.",
+                            "ORDER_CANCELLED",
+                            event.orderId().toString()
+                    );
+                    if (commande.getPickupDriver() != null) {
+                        notificationService.createNotification(
+                                commande.getPickupDriver(),
+                                "Mission Annulée",
+                                "La commande #" + orderNum + " a été annulée.",
+                                "ORDER_CANCELLED",
+                                event.orderId().toString()
+                        );
+                    }
+                    if (commande.getDeliveryDriver() != null
+                            && !commande.getDeliveryDriver().equals(commande.getPickupDriver())) {
+                        notificationService.createNotification(
+                                commande.getDeliveryDriver(),
+                                "Mission Annulée",
+                                "La commande #" + orderNum + " a été annulée.",
+                                "ORDER_CANCELLED",
+                                event.orderId().toString()
+                        );
+                    }
+                }
+
+                default -> { /* no extra notification for IN_PROCESS, PENDING_PICKUP */ }
             }
         });
     }

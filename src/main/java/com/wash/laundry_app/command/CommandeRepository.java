@@ -77,6 +77,8 @@ public interface CommandeRepository extends JpaRepository<Commande, Long> {
 
     Optional<Commande> findByNumeroCommande(String numeroCommande);
 
+    Optional<Commande> findByCreationIdempotencyKey(String creationIdempotencyKey);
+
     boolean existsByNumeroCommande(String numeroCommande);
 
     // ── Pickup driver queries (pickup_driver_id / "livreur" field) ────────────
