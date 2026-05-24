@@ -14,11 +14,16 @@ import java.util.List;
 @Repository
 public interface AuditLogRepository extends JpaRepository<AuditLog, Long> {
 
-    List<AuditLog> findByEntityTypeAndEntityIdOrderByTimestampDesc(String entityType, Long entityId);
+    @Query("SELECT a FROM AuditLog a LEFT JOIN FETCH a.user WHERE a.entityType = :entityType AND a.entityId = :entityId ORDER BY a.timestamp DESC")
+    List<AuditLog> findByEntityTypeAndEntityIdOrderByTimestampDesc(@Param("entityType") String entityType,
+                                                                    @Param("entityId") Long entityId);
 
+    @Query(value = "SELECT a FROM AuditLog a LEFT JOIN FETCH a.user ORDER BY a.timestamp DESC",
+           countQuery = "SELECT COUNT(a) FROM AuditLog a")
     Page<AuditLog> findAllByOrderByTimestampDesc(Pageable pageable);
 
-    @Query("SELECT a FROM AuditLog a WHERE a.entityType = :entityType AND a.entityId = :entityId ORDER BY a.timestamp DESC")
+    @Query(value = "SELECT a FROM AuditLog a LEFT JOIN FETCH a.user WHERE a.entityType = :entityType AND a.entityId = :entityId ORDER BY a.timestamp DESC",
+           countQuery = "SELECT COUNT(a) FROM AuditLog a WHERE a.entityType = :entityType AND a.entityId = :entityId")
     Page<AuditLog> findByEntityTypeAndEntityId(@Param("entityType") String entityType,
                                                @Param("entityId") Long entityId,
                                                Pageable pageable);
