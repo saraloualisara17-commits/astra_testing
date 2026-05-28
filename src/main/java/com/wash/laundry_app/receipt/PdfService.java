@@ -23,7 +23,6 @@ import org.springframework.stereotype.Service;
 
 import com.ibm.icu.text.ArabicShaping;
 import com.ibm.icu.text.ArabicShapingException;
-import com.ibm.icu.text.Bidi;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
@@ -175,26 +174,54 @@ public class PdfService {
     }
 
     /**
-     * Shape and reorder Arabic text so iText (without pdfCalligraph) renders it
-     * correctly. ICU4J applies the Unicode BiDi algorithm + Arabic letter joining.
-     * Falls back to the original string if shaping fails.
+     * Shape Arabic letters for joining (logical order).
+     *
+     * iText html2pdf handles BiDi reordering itself when the HTML has dir="rtl"
+     * and the font has the required OpenType GSUB/GPOS tables (NotoSansArabic has them).
+     * We ONLY apply ArabicShaping to join the letters (isolated → initial/medial/final forms).
+     * We do NOT call Bidi.writeReordered() — that would pre-reverse the string and then
+     * iText would reverse it again, producing corrupted doubled-reversal output.
+     *
+     * For mixed strings (Arabic label + Latin/number value) we keep them in separate
+     * HTML spans with explicit dir attributes so the browser/iText BiDi algorithm
+     * handles each run independently. Never pre-process mixed strings as one unit.
      */
     private String shapeArabic(String text) {
         if (text == null || text.isEmpty()) return text;
+        // Skip if no Arabic characters present
+        boolean hasArabic = false;
+        for (int i = 0; i < text.length(); i++) {
+            int cp = text.codePointAt(i);
+            if ((cp >= 0x0600 && cp <= 0x06FF) || (cp >= 0xFB50 && cp <= 0xFDFF) || (cp >= 0xFE70 && cp <= 0xFEFF)) {
+                hasArabic = true;
+                break;
+            }
+        }
+        if (!hasArabic) return text;
         try {
+            // LETTERS_SHAPE: join Arabic letters into contextual forms (initial/medial/final/isolated)
+            // TEXT_DIRECTION_LOGICAL: input is in logical (storage) order — iText will do visual reorder via dir=rtl
+            // LENGTH_FIXED_SPACES_NEAR: keep string length stable (no character insertion)
             ArabicShaping shaper = new ArabicShaping(
                     ArabicShaping.LETTERS_SHAPE |
-                    ArabicShaping.LENGTH_GROW_SHRINK |
-                    ArabicShaping.TEXT_DIRECTION_VISUAL_LTR
+                    ArabicShaping.TEXT_DIRECTION_LOGICAL |
+                    ArabicShaping.LENGTH_FIXED_SPACES_NEAR
             );
-            String shaped = shaper.shape(text);
-            Bidi bidi = new Bidi();
-            bidi.setPara(shaped, Bidi.RTL, null);
-            return bidi.writeReordered(Bidi.DO_MIRRORING);
+            return shaper.shape(text);
         } catch (ArabicShapingException e) {
             log.warn("[pdf] Arabic shaping failed for '{}': {}", text, e.getMessage());
             return text;
         }
+    }
+
+    /**
+     * Wrap an Arabic-only label and a LTR value (number, Latin text, date) into
+     * separate spans so iText BiDi handles each run correctly.
+     * Output: <span dir="rtl">label</span><span dir="ltr">value</span>
+     */
+    private String arLabelValue(String arLabel, String ltrValue) {
+        return "<span dir='rtl'>" + arLabel + "</span>" +
+               "<span dir='ltr' style='unicode-bidi:embed;'>" + ltrValue + "</span>";
     }
 
     private String buildReceiptHtml(Commande commande, String receiptType) {
@@ -313,7 +340,7 @@ public class PdfService {
         html.append("<!DOCTYPE html><html dir='").append(dir).append("'><head><meta charset='UTF-8'/><style>");
         String fontFamily = ar ? "'Noto Sans Arabic', Arial, sans-serif" : "Arial, sans-serif";
         html.append("* { margin:0; padding:0; box-sizing:border-box; }");
-        html.append("body { font-family: ").append(fontFamily).append("; font-size:13px; color:#1a1a1a; background:white; padding:20px; max-width:600px; margin:0 auto; direction:").append(dir).append("; }");
+        html.append("body { font-family: ").append(fontFamily).append("; font-size:13px; color:#1a1a1a; background:white; padding:20px; max-width:600px; margin:0 auto; direction:").append(dir).append("; unicode-bidi:embed; }");
         html.append(".logo-top { text-align:center; padding-bottom:16px; margin-bottom:4px; }");
         // Header: use a table so iText reliably places QR on the opposite side
         html.append(".header-table { width:100%; border-collapse:collapse; padding-bottom:20px; border-bottom:2px solid #0D7377; margin-bottom:20px; }");
@@ -333,19 +360,21 @@ public class PdfService {
         html.append(".meta-table { width:100%; border-collapse:collapse; }");
         html.append(".meta-table td { font-size:12px; color:#666; padding:2px 0; width:50%; }");
         html.append(".items-table { width:100%; border-collapse:collapse; margin-bottom:16px; }");
-        html.append(".items-table th { background:#0D7377; color:white; padding:8px 10px; font-size:11px; font-weight:700; text-align:").append(thAlign).append("; }");
-        html.append(".items-table td { padding:8px 10px; font-size:12px; border-bottom:1px solid #f0f0f0; vertical-align:top; }");
+        // text-align:start maps to right in RTL, left in LTR — direction-agnostic
+        html.append(".items-table th { background:#0D7377; color:white; padding:8px 10px; font-size:11px; font-weight:700; text-align:start; }");
+        html.append(".items-table td { padding:8px 10px; font-size:12px; border-bottom:1px solid #f0f0f0; vertical-align:top; text-align:start; }");
         html.append(".items-table tr:nth-child(even) td { background:#fafafa; }");
         html.append(".item-name { font-weight:600; color:#1a1a1a; }");
         html.append(".item-detail { font-size:11px; color:#888; margin-top:2px; }");
         html.append(".discount-text { color:#EF4444; font-size:11px; }");
-        html.append(".price-cell { font-weight:700; color:#0D7377; text-align:").append(priceAlign).append("; white-space:nowrap; }");
-        // Totals: simple full-width table, label and amount columns explicit
+        // Price is always LTR (numbers + DH) — explicit dir=ltr on the cell
+        html.append(".price-cell { font-weight:700; color:#0D7377; text-align:end; white-space:nowrap; direction:ltr; unicode-bidi:embed; }");
+        // Totals: label column starts on the natural start edge, value on end
         html.append(".totals-section { width:100%; margin-bottom:16px; }");
         html.append(".total-row-table { width:100%; border-collapse:collapse; }");
         html.append(".total-row-table td { padding:6px 8px; font-size:13px; border-bottom:1px solid #f0f0f0; }");
-        html.append(".total-row-table .lbl { text-align:").append(thAlign).append("; }");
-        html.append(".total-row-table .val { text-align:").append(priceAlign).append("; font-weight:600; white-space:nowrap; }");
+        html.append(".total-row-table .lbl { text-align:start; }");
+        html.append(".total-row-table .val { text-align:end; font-weight:600; white-space:nowrap; direction:ltr; unicode-bidi:embed; }");
         html.append(".grand td { border-bottom:2px solid #0D7377; border-top:2px solid #0D7377; padding:10px 8px; font-size:16px; font-weight:800; color:#0D7377; }");
         html.append(".paid td { color:#10B981; font-weight:700; }");
         html.append(".remaining td { color:#EF4444; font-weight:700; font-size:15px; }");
@@ -414,13 +443,18 @@ public class PdfService {
         }
 
         // ── Order meta ──────────────────────────────────────────────────────────
+        String statusText = ar ? shapeArabic(translateStatus(commande.getStatus().name(), true))
+                               : translateStatus(commande.getStatus().name(), false);
         html.append("<div class='order-meta'>")
-            .append("<div class='order-ref'>").append(commande.getNumeroCommande()).append("</div>")
+            .append("<div class='order-ref' dir='ltr'>").append(commande.getNumeroCommande()).append("</div>")
             .append("<table class='meta-table'><tr>")
-            .append("<td>").append(labelDate).append(": <strong>").append(dateCreation).append("</strong></td>")
-            .append("<td>").append(labelMode).append(": <strong>").append(modeLabel).append("</strong></td>")
+            // Date: Arabic label + LTR date value in separate spans
+            .append("<td>").append(ar ? arLabelValue(labelDate, ": " + dateCreation)
+                                      : labelDate + ": <strong>" + dateCreation + "</strong>").append("</td>")
+            .append("<td>").append(ar ? arLabelValue(labelMode, ": " + modeLabel)
+                                      : labelMode + ": <strong>" + modeLabel + "</strong>").append("</td>")
             .append("</tr><tr>")
-            .append("<td colspan='2'>").append(labelStatut).append(": <strong>").append(ar ? shapeArabic(translateStatus(commande.getStatus().name(), true)) : translateStatus(commande.getStatus().name(), false)).append("</strong></td>")
+            .append("<td colspan='2'>").append(labelStatut).append(": <strong>").append(statusText).append("</strong></td>")
             .append("</tr></table></div>");
 
         // ── Scheduled pickup box ────────────────────────────────────────────────
@@ -446,10 +480,16 @@ public class PdfService {
 
         html.append("<div class='section-header'>&#128100; ").append(labelClient).append("</div>")
             .append("<table class='client-table'><tr>")
-            .append("<td><span class='info-label'>").append(labelNom).append("</span><span class='info-value'>").append(clientName).append("</span></td>")
-            .append("<td><span class='info-label'>").append(labelTel).append("</span><span class='info-value'>").append(phone).append("</span></td>")
+            .append("<td><span class='info-label'>").append(labelNom).append("</span>")
+                // Client name may be Arabic or Latin — wrap in bdi to auto-detect
+                .append("<span class='info-value'><bdi>").append(clientName).append("</bdi></span></td>")
+            .append("<td><span class='info-label'>").append(labelTel).append("</span>")
+                // Phone is always LTR digits
+                .append("<span class='info-value' dir='ltr' style='unicode-bidi:embed;'>").append(phone).append("</span></td>")
             .append("</tr><tr>")
-            .append("<td colspan='2'><span class='info-label'>").append(labelAdresse).append("</span><span class='info-value'>").append(address).append("</span></td>")
+            .append("<td colspan='2'><span class='info-label'>").append(labelAdresse).append("</span>")
+                // Address may be Arabic or Latin
+                .append("<span class='info-value'><bdi>").append(address).append("</bdi></span></td>")
             .append("</tr></table>");
 
         // ── Items table ─────────────────────────────────────────────────────────
@@ -495,36 +535,24 @@ public class PdfService {
                 .map(i -> i.getRemiseMontant() != null ? i.getRemiseMontant() : BigDecimal.ZERO)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        // In RTL tables, columns still render left-to-right in iText, so we must
-        // explicitly put the amount column first (it will appear on the left) and
-        // the label column second (it will appear on the right) for AR.
+        // Totals table: uniform structure — dir="rtl" on body makes label start on
+        // the right and amount on the left automatically. No manual column swap needed.
         html.append("<div class='totals-section'><table class='total-row-table'>");
         if (totalDiscount.compareTo(BigDecimal.ZERO) > 0) {
-            if (ar) {
-                html.append("<tr><td class='val'>").append(montantTotal.add(totalDiscount).setScale(2, RoundingMode.HALF_UP)).append(" DH</td><td class='lbl'>").append(labelSousTotal).append("</td></tr>")
-                    .append("<tr class='discount-text'><td class='val'>-").append(totalDiscount.setScale(2, RoundingMode.HALF_UP)).append(" DH</td><td class='lbl'>").append(labelRemise).append("</td></tr>");
-            } else {
-                html.append("<tr><td class='lbl'>").append(labelSousTotal).append("</td><td class='val'>").append(montantTotal.add(totalDiscount).setScale(2, RoundingMode.HALF_UP)).append(" DH</td></tr>")
-                    .append("<tr class='discount-text'><td class='lbl'>").append(labelRemise).append("</td><td class='val'>-").append(totalDiscount.setScale(2, RoundingMode.HALF_UP)).append(" DH</td></tr>");
-            }
+            html.append("<tr><td class='lbl'>").append(labelSousTotal).append("</td>")
+                .append("<td class='val' dir='ltr'>").append(montantTotal.add(totalDiscount).setScale(2, RoundingMode.HALF_UP)).append(" DH</td></tr>")
+                .append("<tr class='discount-text'><td class='lbl'>").append(labelRemise).append("</td>")
+                .append("<td class='val' dir='ltr'>-").append(totalDiscount.setScale(2, RoundingMode.HALF_UP)).append(" DH</td></tr>");
         }
-        if (ar) {
-            html.append("<tr class='grand'><td class='val'>").append(montantTotal.setScale(2, RoundingMode.HALF_UP)).append(" DH</td><td class='lbl'>").append(labelTotal).append("</td></tr>");
-        } else {
-            html.append("<tr class='grand'><td class='lbl'>").append(labelTotal).append("</td><td class='val'>").append(montantTotal.setScale(2, RoundingMode.HALF_UP)).append(" DH</td></tr>");
-        }
+        html.append("<tr class='grand'><td class='lbl'>").append(labelTotal).append("</td>")
+            .append("<td class='val' dir='ltr'>").append(montantTotal.setScale(2, RoundingMode.HALF_UP)).append(" DH</td></tr>");
 
         if (montantPaye.compareTo(BigDecimal.ZERO) > 0) {
-            if (ar) {
-                html.append("<tr class='paid'><td class='val'>").append(montantPaye.setScale(2, RoundingMode.HALF_UP)).append(" DH</td><td class='lbl'>").append(labelPaye).append("</td></tr>");
-                if (montantRestant.compareTo(BigDecimal.ZERO) > 0) {
-                    html.append("<tr class='remaining'><td class='val'>").append(montantRestant.setScale(2, RoundingMode.HALF_UP)).append(" DH</td><td class='lbl'>").append(labelReste).append("</td></tr>");
-                }
-            } else {
-                html.append("<tr class='paid'><td class='lbl'>").append(labelPaye).append("</td><td class='val'>").append(montantPaye.setScale(2, RoundingMode.HALF_UP)).append(" DH</td></tr>");
-                if (montantRestant.compareTo(BigDecimal.ZERO) > 0) {
-                    html.append("<tr class='remaining'><td class='lbl'>").append(labelReste).append("</td><td class='val'>").append(montantRestant.setScale(2, RoundingMode.HALF_UP)).append(" DH</td></tr>");
-                }
+            html.append("<tr class='paid'><td class='lbl'>").append(labelPaye).append("</td>")
+                .append("<td class='val' dir='ltr'>").append(montantPaye.setScale(2, RoundingMode.HALF_UP)).append(" DH</td></tr>");
+            if (montantRestant.compareTo(BigDecimal.ZERO) > 0) {
+                html.append("<tr class='remaining'><td class='lbl'>").append(labelReste).append("</td>")
+                    .append("<td class='val' dir='ltr'>").append(montantRestant.setScale(2, RoundingMode.HALF_UP)).append(" DH</td></tr>");
             }
         }
         html.append("</table></div>");
@@ -536,19 +564,12 @@ public class PdfService {
                 String payDate = p.getDatePaiement().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"));
                 String note = (p.getNote() != null && !p.getNote().isEmpty())
                         ? (ar ? shapeArabic(p.getNote()) : p.getNote()) : labelPaiement;
-                if (ar) {
-                    html.append("<table class='payment-row-table'><tr>")
-                        .append("<td class='payment-date' style='width:120px;'>").append(payDate).append("</td>")
-                        .append("<td><div class='payment-amount'>+").append(p.getMontant().setScale(2, RoundingMode.HALF_UP)).append(" DH</div>")
-                        .append("<div class='payment-note'>").append(note).append("</div></td>")
-                        .append("</tr></table>");
-                } else {
-                    html.append("<table class='payment-row-table'><tr>")
-                        .append("<td><div class='payment-amount'>+").append(p.getMontant().setScale(2, RoundingMode.HALF_UP)).append(" DH</div>")
-                        .append("<div class='payment-note'>").append(note).append("</div></td>")
-                        .append("<td class='payment-date' style='width:120px;'>").append(payDate).append("</td>")
-                        .append("</tr></table>");
-                }
+                // Uniform structure — body dir="rtl" places amount on left, date on right for AR
+                html.append("<table class='payment-row-table'><tr>")
+                    .append("<td><div class='payment-amount' dir='ltr'>+").append(p.getMontant().setScale(2, RoundingMode.HALF_UP)).append(" DH</div>")
+                    .append("<div class='payment-note'>").append(note).append("</div></td>")
+                    .append("<td class='payment-date' dir='ltr' style='width:130px;'>").append(payDate).append("</td>")
+                    .append("</tr></table>");
             }
             html.append("</div>");
             if (montantRestant.compareTo(BigDecimal.ZERO) > 0) {
@@ -569,14 +590,16 @@ public class PdfService {
             for (OrderAttempt attempt : attempts) {
                 String attemptDate = attempt.getAttemptedAt().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"));
                 String typeLabel = attempt.getAttemptType() == AttemptType.PICKUP
-                        ? (ar ? "استلام" : "Collecte")
-                        : (ar ? "تسليم"  : "Livraison");
-                String reason = OrderAttempt.getReasonLabel(attempt.getReason(), ar ? "AR" : "FR");
+                        ? (ar ? shapeArabic("استلام") : "Collecte")
+                        : (ar ? shapeArabic("تسليم")  : "Livraison");
+                String reason = ar ? shapeArabic(OrderAttempt.getReasonLabel(attempt.getReason(), "AR"))
+                                   : OrderAttempt.getReasonLabel(attempt.getReason(), "FR");
+                // meta is always LTR (dates, names, numbers)
                 String meta = attemptDate;
                 if (attempt.getDriver() != null) meta += " · " + attempt.getDriver().getName();
                 if (attempt.getNotes() != null && !attempt.getNotes().isEmpty()) meta += " · " + attempt.getNotes();
                 if (attempt.getRescheduledTo() != null) {
-                    String reschedLabel = ar ? "موعد جديد" : "Reporté";
+                    String reschedLabel = ar ? shapeArabic("موعد جديد") : "Reporté";
                     meta += " · " + reschedLabel + ": " + attempt.getRescheduledTo().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"));
                 }
                 html.append("<div class='attempt-row'>")
