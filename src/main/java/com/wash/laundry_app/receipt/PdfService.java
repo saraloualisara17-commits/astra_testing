@@ -24,6 +24,7 @@ import org.springframework.stereotype.Service;
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.file.Files;
@@ -106,21 +107,31 @@ public class PdfService {
         }
     }
 
-    // Shared ConverterProperties with standard fonts registered.
-    // iTextPDF's default ConverterProperties has no FontProvider, so it falls
-    // back to built-in Type1 fonts (Helvetica/Courier/Times) which have no Arabic
-    // glyphs — Arabic text renders as empty boxes. Registering the standard font
-    // set gives iText access to all fonts it ships with, which covers Latin and
-    // basic Unicode. For full Arabic shaping you'd need an Arabic TTF registered
-    // here (e.g. Cairo, Amiri); for now this at minimum prevents iText crashes.
+    // ConverterProperties with Arabic TTF bundled from classpath resources.
+    // Standard PDF fonts (Helvetica/Times/Courier) have no Arabic glyphs.
+    // System fonts on Railway Linux also lack Arabic. The NotoSansArabic TTF
+    // is bundled in src/main/resources/fonts/ and loaded here so Arabic text
+    // renders correctly in both AR and FR receipts.
     private ConverterProperties buildConverterProperties() {
         ConverterProperties props = new ConverterProperties();
         try {
             FontProvider fontProvider = new FontProvider();
-            fontProvider.addStandardPdfFonts();  // Helvetica, Times, Courier
-            fontProvider.addSystemFonts();        // OS fonts — includes Arial on most servers
+            fontProvider.addStandardPdfFonts();
+            fontProvider.addSystemFonts();
+
+            // Load bundled Arabic-capable font from classpath
+            try (InputStream is = getClass().getResourceAsStream("/fonts/NotoSansArabic-Regular.ttf")) {
+                if (is != null) {
+                    byte[] fontBytes = is.readAllBytes();
+                    fontProvider.addFont(fontBytes, "Identity-H");
+                    log.debug("[pdf] NotoSansArabic font loaded from classpath ({} bytes)", fontBytes.length);
+                } else {
+                    log.warn("[pdf] NotoSansArabic-Regular.ttf not found in classpath /fonts/ — Arabic may not render");
+                }
+            }
+
             props.setFontProvider(fontProvider);
-            log.debug("[pdf] FontProvider configured with standard + system fonts");
+            log.debug("[pdf] FontProvider configured with standard + system + Arabic fonts");
         } catch (Exception e) {
             log.warn("[pdf] Could not configure FontProvider ({}), using iText default. Arabic may not render.", e.getMessage());
         }
@@ -167,7 +178,7 @@ public class PdfService {
         boolean ar = "ar".equals(lang);
 
         SystemSettings settings = settingsService.getSettings();
-        String businessName  = settings.getAppName()      != null ? settings.getAppName()      : "Laundry";
+        String businessName  = settings.getAppName()      != null ? settings.getAppName()      : "ASTRA PROPRE";
         String businessPhone = settings.getBusinessPhone() != null ? settings.getBusinessPhone() : "";
         String logoUrl       = settings.getLogoUrl()       != null ? settings.getLogoUrl()       : "";
 
@@ -234,8 +245,9 @@ public class PdfService {
 
         StringBuilder html = new StringBuilder();
         html.append("<!DOCTYPE html><html dir='").append(dir).append("'><head><meta charset='UTF-8'/><style>");
+        String fontFamily = ar ? "'Noto Sans Arabic', Arial, sans-serif" : "Arial, sans-serif";
         html.append("* { margin:0; padding:0; box-sizing:border-box; }");
-        html.append("body { font-family: Arial, sans-serif; font-size:13px; color:#1a1a1a; background:white; padding:20px; max-width:600px; margin:0 auto; direction:").append(dir).append("; }");
+        html.append("body { font-family: ").append(fontFamily).append("; font-size:13px; color:#1a1a1a; background:white; padding:20px; max-width:600px; margin:0 auto; direction:").append(dir).append("; }");
         html.append(".logo-top { text-align:center; padding-bottom:16px; margin-bottom:4px; }");
         html.append(".header { display:flex; justify-content:space-between; align-items:flex-start; padding-bottom:20px; border-bottom:2px solid #0D7377; margin-bottom:20px; }");
         html.append(".business-info { flex:1; }");
@@ -503,7 +515,7 @@ public class PdfService {
 
     private String buildPaymentReceiptHtml(Paiement paiement) {
         SystemSettings settings = settingsService.getSettings();
-        String businessName = settings.getAppName() != null ? settings.getAppName() : "Laundry";
+        String businessName = settings.getAppName() != null ? settings.getAppName() : "ASTRA PROPRE";
         String businessPhone = settings.getBusinessPhone() != null ? settings.getBusinessPhone() : "";
         String logoUrl = settings.getLogoUrl() != null ? settings.getLogoUrl() : "";
 
@@ -592,7 +604,7 @@ public class PdfService {
 
     public String generateWhatsAppMessage(Commande commande, String receiptType) {
         SystemSettings settings = settingsService.getSettings();
-        String businessName = settings.getAppName() != null ? settings.getAppName() : "Laundry";
+        String businessName = settings.getAppName() != null ? settings.getAppName() : "ASTRA PROPRE";
         String businessPhone = settings.getBusinessPhone() != null ? settings.getBusinessPhone() : "";
 
         Client client = commande.getClient();
@@ -675,7 +687,7 @@ public class PdfService {
 
     public String buildThermalReceiptText(Commande commande, String receiptType) {
         SystemSettings settings = settingsService.getSettings();
-        String businessName = settings.getAppName() != null ? settings.getAppName() : "Laundry";
+        String businessName = settings.getAppName() != null ? settings.getAppName() : "ASTRA PROPRE";
         String businessPhone = settings.getBusinessPhone() != null ? settings.getBusinessPhone() : "";
 
         Client client = commande.getClient();
