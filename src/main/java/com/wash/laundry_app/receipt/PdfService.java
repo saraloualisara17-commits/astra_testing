@@ -21,6 +21,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import com.ibm.icu.text.ArabicShaping;
+import com.ibm.icu.text.ArabicShapingException;
+import com.ibm.icu.text.Bidi;
+
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
@@ -170,6 +174,29 @@ public class PdfService {
         }
     }
 
+    /**
+     * Shape and reorder Arabic text so iText (without pdfCalligraph) renders it
+     * correctly. ICU4J applies the Unicode BiDi algorithm + Arabic letter joining.
+     * Falls back to the original string if shaping fails.
+     */
+    private String shapeArabic(String text) {
+        if (text == null || text.isEmpty()) return text;
+        try {
+            ArabicShaping shaper = new ArabicShaping(
+                    ArabicShaping.LETTERS_SHAPE |
+                    ArabicShaping.LENGTH_GROW_SHRINK |
+                    ArabicShaping.TEXT_DIRECTION_VISUAL_LTR
+            );
+            String shaped = shaper.shape(text);
+            Bidi bidi = new Bidi();
+            bidi.setPara(shaped, Bidi.RTL, null);
+            return bidi.writeReordered(Bidi.DO_MIRRORING);
+        } catch (ArabicShapingException e) {
+            log.warn("[pdf] Arabic shaping failed for '{}': {}", text, e.getMessage());
+            return text;
+        }
+    }
+
     private String buildReceiptHtml(Commande commande, String receiptType) {
         return buildReceiptHtml(commande, receiptType, "fr");
     }
@@ -236,12 +263,51 @@ public class PdfService {
             modeLabel = ar ? "هاتفي" : "Téléphonique";
         }
 
+        // Shape all Arabic strings so iText renders joined, right-to-left glyphs
+        if (ar) {
+            labelClient    = shapeArabic(labelClient);
+            labelNom       = shapeArabic(labelNom);
+            labelTel       = shapeArabic(labelTel);
+            labelAdresse   = shapeArabic(labelAdresse);
+            labelArticles  = shapeArabic(labelArticles);
+            labelArticle   = shapeArabic(labelArticle);
+            labelDetails   = shapeArabic(labelDetails);
+            labelPrix      = shapeArabic(labelPrix);
+            labelDate      = shapeArabic(labelDate);
+            labelMode      = shapeArabic(labelMode);
+            labelStatut    = shapeArabic(labelStatut);
+            labelSousTotal = shapeArabic(labelSousTotal);
+            labelRemise    = shapeArabic(labelRemise);
+            labelTotal     = shapeArabic(labelTotal);
+            labelPaye      = shapeArabic(labelPaye);
+            labelReste     = shapeArabic(labelReste);
+            labelPaiements = shapeArabic(labelPaiements);
+            labelTentatives= shapeArabic(labelTentatives);
+            labelPickupDate= shapeArabic(labelPickupDate);
+            labelLivreur   = shapeArabic(labelLivreur);
+            labelSigClient = shapeArabic(labelSigClient);
+            labelSigLivr   = shapeArabic(labelSigLivr);
+            labelSignLine  = shapeArabic(labelSignLine);
+            labelPaiement  = shapeArabic(labelPaiement);
+            labelEntPaye   = shapeArabic(labelEntPaye);
+            labelSolde     = shapeArabic(labelSolde);
+            labelNoAddr    = shapeArabic(labelNoAddr);
+            labelCancelled = shapeArabic(labelCancelled);
+            labelPickupFail= shapeArabic(labelPickupFail);
+            labelDelivFail = shapeArabic(labelDelivFail);
+            footerThanks   = shapeArabic(footerThanks);
+            footerContact  = shapeArabic(footerContact);
+            modeLabel      = shapeArabic(modeLabel);
+            businessName   = shapeArabic(businessName);
+        }
+
         // ── HTML/CSS ────────────────────────────────────────────────────────────
-        String dir       = ar ? "rtl" : "ltr";
+        // iText html2pdf has limited flex/grid support — use table-based layout
+        // for anything that needs columns, and block elements everywhere else.
+        String dir        = ar ? "rtl" : "ltr";
         String borderSide = ar ? "border-right" : "border-left";
-        String thAlign   = ar ? "right" : "left";
+        String thAlign    = ar ? "right" : "left";
         String priceAlign = ar ? "left"  : "right";
-        String marginAuto = ar ? "margin-right: auto;" : "margin-left: auto;";
 
         StringBuilder html = new StringBuilder();
         html.append("<!DOCTYPE html><html dir='").append(dir).append("'><head><meta charset='UTF-8'/><style>");
@@ -249,21 +315,23 @@ public class PdfService {
         html.append("* { margin:0; padding:0; box-sizing:border-box; }");
         html.append("body { font-family: ").append(fontFamily).append("; font-size:13px; color:#1a1a1a; background:white; padding:20px; max-width:600px; margin:0 auto; direction:").append(dir).append("; }");
         html.append(".logo-top { text-align:center; padding-bottom:16px; margin-bottom:4px; }");
-        html.append(".header { display:flex; justify-content:space-between; align-items:flex-start; padding-bottom:20px; border-bottom:2px solid #0D7377; margin-bottom:20px; }");
-        html.append(".business-info { flex:1; }");
+        // Header: use a table so iText reliably places QR on the opposite side
+        html.append(".header-table { width:100%; border-collapse:collapse; padding-bottom:20px; border-bottom:2px solid #0D7377; margin-bottom:20px; }");
         html.append(".business-name { font-size:22px; font-weight:800; color:#0D7377; margin-bottom:4px; }");
         html.append(".business-detail { font-size:12px; color:#666; margin-top:2px; }");
-        html.append(".header-side { display:flex; flex-direction:column; align-items:flex-end; gap:8px; }");
         html.append(".qr-code { width:80px; height:80px; }");
-        html.append(".receipt-number { font-size:11px; color:#999; margin-top:4px; }");
+        html.append(".receipt-number { font-size:11px; color:#999; margin-top:4px; text-align:center; }");
         html.append(".section-header { background:#f0fafa; ").append(borderSide).append(":4px solid #0D7377; padding:8px 12px; margin:16px 0 10px; font-size:13px; font-weight:700; color:#0D7377; }");
-        html.append(".client-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:4px; }");
-        html.append(".info-row { display:flex; flex-direction:column; gap:2px; }");
-        html.append(".info-label { font-size:10px; font-weight:700; color:#999; text-transform:uppercase; letter-spacing:0.5px; }");
-        html.append(".info-value { font-size:13px; font-weight:600; color:#1a1a1a; }");
+        // Client info: table-based layout (no CSS grid — iText support is partial)
+        html.append(".client-table { width:100%; border-collapse:collapse; margin-bottom:12px; }");
+        html.append(".client-table td { padding:4px 6px; vertical-align:top; width:50%; }");
+        html.append(".info-label { font-size:10px; font-weight:700; color:#999; text-transform:uppercase; letter-spacing:0.5px; display:block; }");
+        html.append(".info-value { font-size:13px; font-weight:600; color:#1a1a1a; display:block; margin-top:2px; }");
         html.append(".order-meta { background:#f9f9f9; border-radius:8px; padding:12px; margin-bottom:16px; }");
-        html.append(".order-ref { font-size:16px; font-weight:800; color:#0D7377; margin-bottom:6px; }");
-        html.append(".meta-row { display:flex; justify-content:space-between; font-size:12px; color:#666; margin-top:4px; }");
+        html.append(".order-ref { font-size:16px; font-weight:800; color:#0D7377; margin-bottom:8px; }");
+        // Meta rows: use table for reliable two-column layout in both directions
+        html.append(".meta-table { width:100%; border-collapse:collapse; }");
+        html.append(".meta-table td { font-size:12px; color:#666; padding:2px 0; width:50%; }");
         html.append(".items-table { width:100%; border-collapse:collapse; margin-bottom:16px; }");
         html.append(".items-table th { background:#0D7377; color:white; padding:8px 10px; font-size:11px; font-weight:700; text-align:").append(thAlign).append("; }");
         html.append(".items-table td { padding:8px 10px; font-size:12px; border-bottom:1px solid #f0f0f0; vertical-align:top; }");
@@ -272,23 +340,29 @@ public class PdfService {
         html.append(".item-detail { font-size:11px; color:#888; margin-top:2px; }");
         html.append(".discount-text { color:#EF4444; font-size:11px; }");
         html.append(".price-cell { font-weight:700; color:#0D7377; text-align:").append(priceAlign).append("; white-space:nowrap; }");
-        html.append(".totals-section { ").append(marginAuto).append(" width:280px; margin-bottom:16px; }");
-        html.append(".total-row { display:flex; justify-content:space-between; padding:6px 0; font-size:13px; border-bottom:1px solid #f0f0f0; }");
-        html.append(".total-row.grand { border-bottom:2px solid #0D7377; border-top:2px solid #0D7377; padding:10px 0; font-size:16px; font-weight:800; color:#0D7377; margin-top:4px; }");
-        html.append(".total-row.paid { color:#10B981; font-weight:700; }");
-        html.append(".total-row.remaining { color:#EF4444; font-weight:700; font-size:15px; }");
-        html.append(".payment-row { display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:#f0faf5; border-radius:8px; margin-bottom:6px; ").append(borderSide).append(":3px solid #10B981; }");
-        html.append(".payment-amount { font-weight:700; color:#10B981; }");
+        // Totals: simple full-width table, label and amount columns explicit
+        html.append(".totals-section { width:100%; margin-bottom:16px; }");
+        html.append(".total-row-table { width:100%; border-collapse:collapse; }");
+        html.append(".total-row-table td { padding:6px 8px; font-size:13px; border-bottom:1px solid #f0f0f0; }");
+        html.append(".total-row-table .lbl { text-align:").append(thAlign).append("; }");
+        html.append(".total-row-table .val { text-align:").append(priceAlign).append("; font-weight:600; white-space:nowrap; }");
+        html.append(".grand td { border-bottom:2px solid #0D7377; border-top:2px solid #0D7377; padding:10px 8px; font-size:16px; font-weight:800; color:#0D7377; }");
+        html.append(".paid td { color:#10B981; font-weight:700; }");
+        html.append(".remaining td { color:#EF4444; font-weight:700; font-size:15px; }");
+        // Payment rows: table for reliable amount/date placement
+        html.append(".payment-row-table { width:100%; border-collapse:collapse; background:#f0faf5; border-radius:8px; margin-bottom:6px; ").append(borderSide).append(":3px solid #10B981; padding:8px 12px; }");
+        html.append(".payment-amount { font-weight:700; color:#10B981; font-size:13px; }");
         html.append(".payment-note { font-size:11px; color:#666; }");
-        html.append(".payment-date { font-size:11px; color:#999; }");
+        html.append(".payment-date { font-size:11px; color:#999; text-align:").append(priceAlign).append("; }");
         html.append(".unpaid-alert { background:#FEF2F2; border:1px solid #FECACA; border-radius:8px; padding:14px; margin-bottom:16px; text-align:center; }");
         html.append(".unpaid-title { font-size:15px; font-weight:800; color:#EF4444; margin-bottom:4px; }");
         html.append(".unpaid-amount { font-size:22px; font-weight:800; color:#EF4444; margin-top:6px; }");
         html.append(".paid-badge { background:#ECFDF5; border:1px solid #A7F3D0; border-radius:8px; padding:14px; text-align:center; margin-bottom:16px; }");
         html.append(".paid-badge-text { font-size:16px; font-weight:800; color:#10B981; }");
-        html.append(".pickup-box { background:#EFF6FF; border:1px solid #BFDBFE; border-radius:8px; padding:12px; margin-bottom:16px; display:flex; justify-content:space-between; }");
-        html.append(".pickup-label { font-size:12px; color:#3B82F6; font-weight:700; }");
-        html.append(".pickup-date { font-size:14px; font-weight:800; color:#1D4ED8; margin-top:2px; }");
+        // Pickup box: table-based
+        html.append(".pickup-table { width:100%; border-collapse:collapse; background:#EFF6FF; border:1px solid #BFDBFE; border-radius:8px; padding:12px; margin-bottom:16px; }");
+        html.append(".pickup-label { font-size:12px; color:#3B82F6; font-weight:700; display:block; }");
+        html.append(".pickup-date { font-size:14px; font-weight:800; color:#1D4ED8; margin-top:2px; display:block; }");
         html.append(".footer { margin-top:24px; padding-top:16px; border-top:1px solid #e0e0e0; text-align:center; }");
         html.append(".footer-text { font-size:12px; color:#999; margin-bottom:4px; }");
         html.append(".footer-brand { font-size:13px; font-weight:700; color:#0D7377; margin-top:8px; }");
@@ -300,9 +374,12 @@ public class PdfService {
         html.append(".attempt-type { font-size:11px; font-weight:700; color:#EA580C; text-transform:uppercase; letter-spacing:0.5px; }");
         html.append(".attempt-reason { font-size:13px; font-weight:600; color:#1a1a1a; margin-top:3px; }");
         html.append(".attempt-meta { font-size:11px; color:#888; margin-top:4px; }");
-        html.append(".signature-section { display:flex; gap:20px; margin:16px 0; }");
-        html.append(".signature-box { flex:1; border:1px solid #e0e0e0; border-radius:8px; padding:12px; }");
-        html.append(".signature-label { font-size:11px; font-weight:700; color:#999; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:36px; }");
+        // Signature: table for side-by-side boxes
+        html.append(".signature-table { width:100%; border-collapse:collapse; margin:16px 0; }");
+        html.append(".signature-table td { width:50%; padding:0 10px 0 0; vertical-align:top; }");
+        html.append(".signature-table td:last-child { padding:0 0 0 10px; }");
+        html.append(".signature-box { border:1px solid #e0e0e0; border-radius:8px; padding:12px; }");
+        html.append(".signature-label { font-size:11px; font-weight:700; color:#999; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:36px; display:block; }");
         html.append(".signature-line { border-top:1px solid #ccc; margin-top:4px; padding-top:4px; font-size:10px; color:#bbb; text-align:center; }");
         html.append("</style></head><body>");
 
@@ -313,15 +390,18 @@ public class PdfService {
         String qrTag = qrBase64.isEmpty() ? "" : "<img src='data:image/png;base64," + qrBase64 + "' class='qr-code'/>";
 
         html.append("<div class='logo-top'>").append(logoImgTag).append("</div>");
-        html.append("<div class='header'>")
-            .append("<div class='business-info'>")
+        // Use a table so iText reliably puts business info and QR on opposite ends
+        // In RTL the first cell is on the right, second on the left — which is correct.
+        html.append("<table class='header-table'><tr>")
+            .append("<td style='vertical-align:top;'>")
             .append("<div class='business-name'>").append(businessName).append("</div>")
             .append(phoneDetail)
             .append("<div class='business-detail'>&#128205; ").append(businessAddress).append("</div>")
-            .append("</div>")
-            .append("<div class='header-side'>").append(qrTag)
+            .append("</td>")
+            .append("<td style='vertical-align:top; text-align:").append(priceAlign).append("; width:100px;'>")
+            .append(qrTag)
             .append("<div class='receipt-number'>#").append(commande.getNumeroCommande()).append("</div>")
-            .append("</div></div>");
+            .append("</td></tr></table>");
 
         // ── Status banners ──────────────────────────────────────────────────────
         CommandeStatus currentStatus = commande.getStatus();
@@ -336,37 +416,41 @@ public class PdfService {
         // ── Order meta ──────────────────────────────────────────────────────────
         html.append("<div class='order-meta'>")
             .append("<div class='order-ref'>").append(commande.getNumeroCommande()).append("</div>")
-            .append("<div class='meta-row'>")
-            .append("<span>").append(labelDate).append(": <strong>").append(dateCreation).append("</strong></span>")
-            .append("<span>").append(labelMode).append(": <strong>").append(modeLabel).append("</strong></span>")
-            .append("</div>")
-            .append("<div class='meta-row'>")
-            .append("<span>").append(labelStatut).append(": <strong>").append(translateStatus(commande.getStatus().name(), ar)).append("</strong></span>")
-            .append("</div></div>");
+            .append("<table class='meta-table'><tr>")
+            .append("<td>").append(labelDate).append(": <strong>").append(dateCreation).append("</strong></td>")
+            .append("<td>").append(labelMode).append(": <strong>").append(modeLabel).append("</strong></td>")
+            .append("</tr><tr>")
+            .append("<td colspan='2'>").append(labelStatut).append(": <strong>").append(ar ? shapeArabic(translateStatus(commande.getStatus().name(), true)) : translateStatus(commande.getStatus().name(), false)).append("</strong></td>")
+            .append("</tr></table></div>");
 
         // ── Scheduled pickup box ────────────────────────────────────────────────
         if (commande.getScheduledPickupDate() != null) {
             String pickupDate = commande.getScheduledPickupDate().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"));
-            String driverName = commande.getLivreur() != null ? commande.getLivreur().getName() : "—";
-            html.append("<div class='pickup-box'>")
-                .append("<div><div class='pickup-label'>").append(labelPickupDate).append("</div>")
-                .append("<div class='pickup-date'>").append(pickupDate).append("</div></div>")
-                .append("<div style='text-align:").append(ar ? "left" : "right").append("'>")
-                .append("<div class='pickup-label'>").append(labelLivreur).append("</div>")
-                .append("<div class='pickup-date'>").append(driverName).append("</div></div>")
-                .append("</div>");
+            String driverName = commande.getLivreur() != null ? (ar ? shapeArabic(commande.getLivreur().getName()) : commande.getLivreur().getName()) : "—";
+            html.append("<table class='pickup-table'><tr>")
+                .append("<td style='vertical-align:top;'>")
+                .append("<span class='pickup-label'>").append(labelPickupDate).append("</span>")
+                .append("<span class='pickup-date'>").append(pickupDate).append("</span>")
+                .append("</td>")
+                .append("<td style='vertical-align:top; text-align:").append(priceAlign).append(";'>")
+                .append("<span class='pickup-label'>").append(labelLivreur).append("</span>")
+                .append("<span class='pickup-date'>").append(driverName).append("</span>")
+                .append("</td></tr></table>");
         }
 
         // ── Client info ─────────────────────────────────────────────────────────
         String phone   = !client.getPhones().isEmpty()    ? client.getPhones().get(0).getPhoneNumber()    : "—";
         String address = !client.getAddresses().isEmpty() ? client.getAddresses().get(0).getAddress()     : labelNoAddr;
+        String clientName = ar ? shapeArabic(client.getName()) : client.getName();
+        if (ar) address = shapeArabic(address);
 
         html.append("<div class='section-header'>&#128100; ").append(labelClient).append("</div>")
-            .append("<div class='client-grid'>")
-            .append("<div class='info-row'><span class='info-label'>").append(labelNom).append("</span><span class='info-value'>").append(client.getName()).append("</span></div>")
-            .append("<div class='info-row'><span class='info-label'>").append(labelTel).append("</span><span class='info-value'>").append(phone).append("</span></div>")
-            .append("<div class='info-row' style='grid-column:span 2'><span class='info-label'>").append(labelAdresse).append("</span><span class='info-value'>").append(address).append("</span></div>")
-            .append("</div>");
+            .append("<table class='client-table'><tr>")
+            .append("<td><span class='info-label'>").append(labelNom).append("</span><span class='info-value'>").append(clientName).append("</span></td>")
+            .append("<td><span class='info-label'>").append(labelTel).append("</span><span class='info-value'>").append(phone).append("</span></td>")
+            .append("</tr><tr>")
+            .append("<td colspan='2'><span class='info-label'>").append(labelAdresse).append("</span><span class='info-value'>").append(address).append("</span></td>")
+            .append("</tr></table>");
 
         // ── Items table ─────────────────────────────────────────────────────────
         html.append("<div class='section-header'>&#128230; ").append(labelArticles).append("</div>")
@@ -379,22 +463,25 @@ public class PdfService {
         for (int i = 0; i < items.size(); i++) {
             CommandeTapis item = items.get(i);
             String productName = item.getProduct() != null ? item.getProduct().getNom() : "—";
+            if (ar) productName = shapeArabic(productName);
             String details = "";
             if (item.getLargeur() != null && item.getHauteur() != null) {
                 details = item.getLargeur() + "m × " + item.getHauteur() + "m = "
                         + item.getLargeur().multiply(item.getHauteur()).setScale(2, RoundingMode.HALF_UP) + "m²";
             } else if (item.getQuantite() != null && item.getQuantite() > 1) {
-                details = item.getQuantite() + (ar ? " قطع" : " pièces");
+                details = item.getQuantite() + (ar ? shapeArabic(" قطع") : " pièces");
             }
             if (item.getCouleur() != null && !item.getCouleur().isEmpty()) {
                 details += (details.isEmpty() ? "" : " · ") + item.getCouleur();
             }
             String discountHtml = "";
             if (item.getRemiseMontant() != null && item.getRemiseMontant().compareTo(BigDecimal.ZERO) > 0) {
-                String remiseLabel = ar ? "خصم" : "Remise";
+                String remiseLabel = ar ? shapeArabic("خصم") : "Remise";
+                String remiseRaison = item.getRemiseRaison() != null
+                        ? (ar ? shapeArabic(item.getRemiseRaison()) : item.getRemiseRaison()) : null;
                 discountHtml = "<div class='discount-text'>" + remiseLabel + ": -"
                         + item.getRemiseMontant() + " DH"
-                        + (item.getRemiseRaison() != null ? " (" + item.getRemiseRaison() + ")" : "")
+                        + (remiseRaison != null ? " (" + remiseRaison + ")" : "")
                         + "</div>";
             }
             html.append("<tr><td><div class='item-name'>").append(productName).append("</div>").append(discountHtml).append("</td>")
@@ -408,36 +495,60 @@ public class PdfService {
                 .map(i -> i.getRemiseMontant() != null ? i.getRemiseMontant() : BigDecimal.ZERO)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        html.append("<div class='totals-section'>");
+        // In RTL tables, columns still render left-to-right in iText, so we must
+        // explicitly put the amount column first (it will appear on the left) and
+        // the label column second (it will appear on the right) for AR.
+        html.append("<div class='totals-section'><table class='total-row-table'>");
         if (totalDiscount.compareTo(BigDecimal.ZERO) > 0) {
-            html.append("<div class='total-row'><span>").append(labelSousTotal).append("</span><span>")
-                .append(montantTotal.add(totalDiscount).setScale(2, RoundingMode.HALF_UP)).append(" DH</span></div>")
-                .append("<div class='total-row discount-text'><span>").append(labelRemise).append("</span><span>-")
-                .append(totalDiscount.setScale(2, RoundingMode.HALF_UP)).append(" DH</span></div>");
-        }
-        html.append("<div class='total-row grand'><span>").append(labelTotal).append("</span><span>")
-            .append(montantTotal.setScale(2, RoundingMode.HALF_UP)).append(" DH</span></div>");
-
-        if (montantPaye.compareTo(BigDecimal.ZERO) > 0) {
-            html.append("<div class='total-row paid'><span>").append(labelPaye).append("</span><span>")
-                .append(montantPaye.setScale(2, RoundingMode.HALF_UP)).append(" DH</span></div>");
-            if (montantRestant.compareTo(BigDecimal.ZERO) > 0) {
-                html.append("<div class='total-row remaining'><span>").append(labelReste).append("</span><span>")
-                    .append(montantRestant.setScale(2, RoundingMode.HALF_UP)).append(" DH</span></div>");
+            if (ar) {
+                html.append("<tr><td class='val'>").append(montantTotal.add(totalDiscount).setScale(2, RoundingMode.HALF_UP)).append(" DH</td><td class='lbl'>").append(labelSousTotal).append("</td></tr>")
+                    .append("<tr class='discount-text'><td class='val'>-").append(totalDiscount.setScale(2, RoundingMode.HALF_UP)).append(" DH</td><td class='lbl'>").append(labelRemise).append("</td></tr>");
+            } else {
+                html.append("<tr><td class='lbl'>").append(labelSousTotal).append("</td><td class='val'>").append(montantTotal.add(totalDiscount).setScale(2, RoundingMode.HALF_UP)).append(" DH</td></tr>")
+                    .append("<tr class='discount-text'><td class='lbl'>").append(labelRemise).append("</td><td class='val'>-").append(totalDiscount.setScale(2, RoundingMode.HALF_UP)).append(" DH</td></tr>");
             }
         }
-        html.append("</div>");
+        if (ar) {
+            html.append("<tr class='grand'><td class='val'>").append(montantTotal.setScale(2, RoundingMode.HALF_UP)).append(" DH</td><td class='lbl'>").append(labelTotal).append("</td></tr>");
+        } else {
+            html.append("<tr class='grand'><td class='lbl'>").append(labelTotal).append("</td><td class='val'>").append(montantTotal.setScale(2, RoundingMode.HALF_UP)).append(" DH</td></tr>");
+        }
+
+        if (montantPaye.compareTo(BigDecimal.ZERO) > 0) {
+            if (ar) {
+                html.append("<tr class='paid'><td class='val'>").append(montantPaye.setScale(2, RoundingMode.HALF_UP)).append(" DH</td><td class='lbl'>").append(labelPaye).append("</td></tr>");
+                if (montantRestant.compareTo(BigDecimal.ZERO) > 0) {
+                    html.append("<tr class='remaining'><td class='val'>").append(montantRestant.setScale(2, RoundingMode.HALF_UP)).append(" DH</td><td class='lbl'>").append(labelReste).append("</td></tr>");
+                }
+            } else {
+                html.append("<tr class='paid'><td class='lbl'>").append(labelPaye).append("</td><td class='val'>").append(montantPaye.setScale(2, RoundingMode.HALF_UP)).append(" DH</td></tr>");
+                if (montantRestant.compareTo(BigDecimal.ZERO) > 0) {
+                    html.append("<tr class='remaining'><td class='lbl'>").append(labelReste).append("</td><td class='val'>").append(montantRestant.setScale(2, RoundingMode.HALF_UP)).append(" DH</td></tr>");
+                }
+            }
+        }
+        html.append("</table></div>");
 
         // ── Payment history ─────────────────────────────────────────────────────
         if (payments != null && !payments.isEmpty()) {
             html.append("<div class='section-header'>&#128176; ").append(labelPaiements).append("</div><div>");
             for (Paiement p : payments) {
                 String payDate = p.getDatePaiement().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"));
-                String note = (p.getNote() != null && !p.getNote().isEmpty()) ? p.getNote() : labelPaiement;
-                html.append("<div class='payment-row'>")
-                    .append("<div><div class='payment-amount'>+").append(p.getMontant().setScale(2, RoundingMode.HALF_UP)).append(" DH</div>")
-                    .append("<div class='payment-note'>").append(note).append("</div></div>")
-                    .append("<div class='payment-date'>").append(payDate).append("</div></div>");
+                String note = (p.getNote() != null && !p.getNote().isEmpty())
+                        ? (ar ? shapeArabic(p.getNote()) : p.getNote()) : labelPaiement;
+                if (ar) {
+                    html.append("<table class='payment-row-table'><tr>")
+                        .append("<td class='payment-date' style='width:120px;'>").append(payDate).append("</td>")
+                        .append("<td><div class='payment-amount'>+").append(p.getMontant().setScale(2, RoundingMode.HALF_UP)).append(" DH</div>")
+                        .append("<div class='payment-note'>").append(note).append("</div></td>")
+                        .append("</tr></table>");
+                } else {
+                    html.append("<table class='payment-row-table'><tr>")
+                        .append("<td><div class='payment-amount'>+").append(p.getMontant().setScale(2, RoundingMode.HALF_UP)).append(" DH</div>")
+                        .append("<div class='payment-note'>").append(note).append("</div></td>")
+                        .append("<td class='payment-date' style='width:120px;'>").append(payDate).append("</td>")
+                        .append("</tr></table>");
+                }
             }
             html.append("</div>");
             if (montantRestant.compareTo(BigDecimal.ZERO) > 0) {
@@ -477,12 +588,12 @@ public class PdfService {
 
         // ── Signature boxes (delivery only) ─────────────────────────────────────
         if (receiptType.equals("DELIVERY")) {
-            html.append("<div class='signature-section'>")
-                .append("<div class='signature-box'><div class='signature-label'>").append(labelSigClient).append("</div>")
-                .append("<div class='signature-line'>").append(labelSignLine).append("</div></div>")
-                .append("<div class='signature-box'><div class='signature-label'>").append(labelSigLivr).append("</div>")
-                .append("<div class='signature-line'>").append(labelSignLine).append("</div></div>")
-                .append("</div>");
+            html.append("<table class='signature-table'><tr>")
+                .append("<td><div class='signature-box'><span class='signature-label'>").append(labelSigClient).append("</span>")
+                .append("<div class='signature-line'>").append(labelSignLine).append("</div></div></td>")
+                .append("<td><div class='signature-box'><span class='signature-label'>").append(labelSigLivr).append("</span>")
+                .append("<div class='signature-line'>").append(labelSignLine).append("</div></div></td>")
+                .append("</tr></table>");
         }
 
         // ── Footer ──────────────────────────────────────────────────────────────
